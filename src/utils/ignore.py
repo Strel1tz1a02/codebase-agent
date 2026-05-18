@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+# V1 默认忽略目录：这些目录通常是依赖、缓存或构建产物，不属于业务源码。
+DEFAULT_IGNORED_DIRS = {
+    ".git",  # Git 元数据目录，体积可能较大，且不参与业务逻辑分析。
+    "node_modules",  # Node.js 依赖目录，文件数量巨大，属于第三方依赖代码。
+    "__pycache__",  # Python 字节码缓存目录，自动生成，无需分析。
+    ".venv",  # Python 虚拟环境目录，包含解释器与安装包，不是项目源码。
+    "dist",  # 打包产物目录，通常由构建流程生成。
+    "build",  # 构建中间产物或输出目录，通常不需要纳入源码分析。
+}
+
+# V1 默认忽略文件：与源码分析无关的系统噪声文件。
+DEFAULT_IGNORED_FILES = {
+    ".DS_Store",  # macOS Finder 自动生成的目录信息文件。
+}
+
+# V1 默认忽略后缀：常见临时/生成文件后缀。
+DEFAULT_IGNORED_SUFFIXES = {
+    ".pyc",  # Python 编译后的字节码文件。
+    ".log",  # 日志文件，通常用于运行记录，不是源码。
+}
+
+
+def should_ignore_dir(dir_name: str) -> bool:
+    """
+    输入：
+        dir_name：当前目录名（不是完整路径），例如 ".git"。
+    输出：
+        bool，True 表示应忽略该目录，False 表示保留。
+    作用：
+        在遍历阶段快速过滤掉体积大或无关目录。
+    设计原因：
+        目录过滤会被高频调用，单独封装便于维护和后续扩展规则。
+    """
+    return dir_name in DEFAULT_IGNORED_DIRS
+
+
+def should_ignore_file(file_path: str | Path) -> bool:
+    """
+    输入：
+        file_path：文件路径（str 或 Path）。
+    输出：
+        bool，True 表示应忽略该文件，False 表示保留。
+    作用：
+        过滤噪声文件和自动生成文件类型。
+    设计原因：
+        文件规则与目录规则语义不同，拆分后逻辑更清晰、测试更聚焦。
+    """
+    path = Path(file_path)
+    if path.name in DEFAULT_IGNORED_FILES:
+        return True
+    if path.suffix.lower() in DEFAULT_IGNORED_SUFFIXES:
+        return True
+    return False
+
+
+def should_ignore_path(path: str | Path) -> bool:
+    """
+    输入：
+        path：目录或文件路径（str 或 Path）。
+    输出：
+        bool，True 表示该路径应被 V1 扫描器忽略，False 表示保留。
+    作用：
+        提供统一的忽略判断入口，供扫描代码直接调用。
+    设计原因：
+        调用方不需要关心路径是文件还是目录，扫描逻辑更简洁稳定。
+    """
+    path_obj = Path(path)
+    if should_ignore_dir(path_obj.name):
+        return True
+    if should_ignore_file(path_obj):
+        return True
+    return False

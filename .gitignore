@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Project local development ---
+# 本地编辑器配置（团队未约定共享时建议忽略）
+.vscode/
+.idea/
+
+# 常见系统垃圾文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 本地临时文件
+*.tmp
+*.bak
