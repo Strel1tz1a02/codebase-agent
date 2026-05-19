@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.qa import answer_project_question
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
 
@@ -25,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="V1 项目结构扫描器")
     parser.add_argument("--repo", required=True, help="待分析的本地项目路径")
+    parser.add_argument("--ask", help="V1.5 project question")
     return parser.parse_args()
 
 
@@ -41,6 +43,12 @@ def main() -> None:
     """
     args = parse_args()
     scan_result = run_v1_scan(args.repo)
+
+    if args.ask:
+        answer = answer_project_question(scan_result, args.ask)
+        print(answer)
+        return
+
     report = generate_v1_report(scan_result)
     print(report)
 

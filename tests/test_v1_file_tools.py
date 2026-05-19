@@ -9,8 +9,10 @@ from src.tools.file_tools import (
     build_file_tree,
     count_file_types,
     find_entry_candidates,
+    read_context_files,
     run_v1_scan,
     scan_files,
+    select_context_files,
     summarize_key_dirs,
 )
 
@@ -100,6 +102,64 @@ class TestV1FileTools(unittest.TestCase):
             "ignored_paths",
         }
         self.assertTrue(required_keys.issubset(set(result.keys())))
+
+    def test_select_context_files_prefers_root_and_src_files(self) -> None:
+        result = run_v1_scan(str(self.repo))
+        selected = select_context_files(result, str(self.repo))
+
+        self.assertGreaterEqual(len(selected), 3)
+        self.assertEqual(selected[0], str((self.repo / "README.md").resolve()))
+        self.assertEqual(selected[1], str((self.repo / "requirements.txt").resolve()))
+        self.assertEqual(selected[2], str((self.repo / "src" / "main.py").resolve()))
+
+    def test_select_context_files_skips_missing_candidates(self) -> None:
+        result = run_v1_scan(str(self.repo))
+        result["entry_candidates"] = [
+            str(self.repo / "missing.py"),
+            str(self.repo / "src" / "main.py"),
+        ]
+
+        selected = select_context_files(result, str(self.repo))
+
+        self.assertFalse(any(path.endswith("missing.py") for path in selected))
+        self.assertIn(str((self.repo / "src" / "main.py").resolve()), selected)
+
+    def test_select_context_files_respects_max_files(self) -> None:
+        result = run_v1_scan(str(self.repo))
+        selected = select_context_files(result, str(self.repo), max_files=2)
+
+        self.assertLessEqual(len(selected), 2)
+
+    def test_read_context_files_reads_content(self) -> None:
+        readme = self.repo / "README.md"
+
+        contents = read_context_files([str(readme)])
+
+        self.assertEqual(contents[str(readme.resolve())], "# demo\n")
+
+    def test_read_context_files_truncates_long_files(self) -> None:
+        long_file = self.repo / "long.txt"
+        long_file.write_text("abcdef", encoding="utf-8")
+
+        contents = read_context_files([str(long_file)], max_chars_per_file=3)
+
+        self.assertEqual(contents[str(long_file.resolve())], "abc")
+
+    def test_read_context_files_skips_missing_files(self) -> None:
+        missing_file = self.repo / "missing.txt"
+
+        contents = read_context_files([str(missing_file)])
+
+        self.assertEqual(contents, {})
+
+    def test_read_context_files_deduplicates_same_resolved_path(self) -> None:
+        readme_abs = self.repo / "README.md"
+        readme_rel = self.repo / "." / "README.md"
+
+        contents = read_context_files([str(readme_abs), str(readme_rel)])
+
+        self.assertEqual(len(contents), 1)
+        self.assertEqual(contents[str(readme_abs.resolve())], "# demo\n")
 
 
 if __name__ == "__main__":
