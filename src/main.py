@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.llm.client import configure_llm
 from src.qa import answer_project_question
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
@@ -20,13 +21,17 @@ def parse_args() -> argparse.Namespace:
     输出：
         argparse.Namespace，包含解析后的参数。
     作用：
-        统一管理 V1 命令行参数定义。
+        统一管理 V1/V1.5 命令行参数定义。
     设计原因：
         参数解析与业务逻辑解耦，便于后续扩展更多开关。
     """
     parser = argparse.ArgumentParser(description="V1 项目结构扫描器")
     parser.add_argument("--repo", required=True, help="待分析的本地项目路径")
     parser.add_argument("--ask", help="V1.5 project question")
+    parser.add_argument("--provider", help="LLM provider: openai or aliyun")
+    parser.add_argument("--model", help="LLM model name")
+    parser.add_argument("--api-key", dest="api_key", help="LLM API key")
+    parser.add_argument("--base-url", dest="base_url", help="LLM API base URL")
     return parser.parse_args()
 
 
@@ -35,18 +40,41 @@ def main() -> None:
     输入：
         无（使用 parse_args 获取参数）。
     输出：
-        无（将报告打印到标准输出）。
+        无（将结果打印到标准输出）。
     作用：
-        执行 V1 完整扫描流程并输出报告。
+        执行 V1 扫描或 V1.5 问答流程。
     设计原因：
-        作为程序入口，保持流程清晰：解析参数 -> 扫描 -> 渲染 -> 输出。
+        作为程序入口，保持流程清晰：解析参数 -> 扫描 -> 渲染/问答 -> 输出。
     """
     args = parse_args()
     scan_result = run_v1_scan(args.repo)
 
     if args.ask:
-        answer = answer_project_question(scan_result, args.ask)
-        print(answer)
+        configure_llm(
+            provider=args.provider,
+            model=args.model,
+            api_key=args.api_key,
+            base_url=args.base_url,
+        )
+        qa_result = answer_project_question(scan_result, args.ask)
+        answer_text = str(qa_result.get("answer", ""))
+        used_files = qa_result.get("used_files", [])
+        prompt_text = str(qa_result.get("prompt", ""))
+
+        print("## Prompt")
+        print(prompt_text)
+        print()
+
+        print("## 回答")
+        print(answer_text)
+        print()
+
+        print("## 使用的上下文文件")
+        if isinstance(used_files, list) and used_files:
+            for file_path in used_files:
+                print(f"- {file_path}")
+        else:
+            print("- 无")
         return
 
     report = generate_v1_report(scan_result)

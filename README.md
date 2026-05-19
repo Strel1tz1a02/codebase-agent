@@ -1,63 +1,83 @@
 # codebase-agent
 
-一个面向代码仓库理解的 Agent 项目。  
-当前已完成 V1：项目结构扫描器。
+面向代码仓库理解的 Agent 实验项目。
 
-## V1 功能
+当前实现状态：
 
-输入本地项目路径，输出：
+1. V1：项目结构扫描器
+2. V1.5：基于关键文件上下文的 LLM 项目问答（不使用 RAG）
+
+## 1. 环境要求
+
+1. Python 3.11（推荐）
+2. 可用的网络环境（用于调用 LLM API）
+
+## 2. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+> `requirements.txt` 当前最小依赖为 `openai>=1.0.0`。
+
+## 3. V1：项目结构扫描
+
+```bash
+python src/main.py --repo E:\projects\test_project_v1
+```
+
+输出包含：
 
 1. 项目目录树
 2. 文件总数
 3. 文件类型统计
 4. 主要目录
 5. 入口候选文件
-6. 忽略路径列表
+6. 忽略路径
 
-## 项目结构（当前）
+## 4. V1.5：项目问答
 
-```text
-codebase-agent/
-├── Docs/
-├── src/
-│   ├── main.py
-│   ├── tools/
-│   │   └── file_tools.py
-│   └── utils/
-│       └── ignore.py
-└── tests/
-    └── test_v1_file_tools.py
-```
+V1.5 使用命令行参数注入 LLM 配置（不依赖环境变量）：
 
-## 运行方式
+必填参数：
 
-```bash
-python src/main.py --repo E:\projects\test_project_v1
-```
+1. `--provider`
+2. `--model`
+3. `--api-key`
 
-## 输出说明
+可选参数：
 
-- `tree`：项目目录树（文本）
-- `file_count`：纳入分析的文件数量
-- `file_types`：按后缀统计的文件类型数量
-- `key_dirs`：识别出的主要目录（如 `src/tests/docs`）
-- `entry_candidates`：入口候选文件路径
-- `ignored_paths`：被忽略的目录/文件路径
+1. `--base-url`
 
-## 运行测试
+示例（阿里云兼容模式）：
 
 ```bash
-python -m unittest tests/test_v1_file_tools.py -v
+python src/main.py --repo E:\projects\codebase-agent --ask "这个项目入口在哪里？" --provider aliyun --model qwen-plus --api-key <你的key> --base-url https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
-## 当前限制（V1）
+输出包含：
 
-- 仅支持本地路径扫描
-- 不解析 `.gitignore` 语义（使用内置忽略规则）
-- 不做 RAG / 问答 / LLM 分析
+1. `Prompt`
+2. `回答`
+3. `使用的上下文文件`
 
-## 下一步（V2 方向）
+## 5. 已注册 Provider 与模型
 
-1. 代码切分与向量索引
-2. 基于检索的代码问答（RAG）
-3. 结合 Tool Calling 自动读取与定位代码
+当前在 `src/llm/client.py` 中维护注册表（`PROVIDER_MODEL_REGISTRY`），调用时要求模型命中当前 provider 的注册集合。
+
+已注册 provider：
+
+1. `openai`
+2. `aliyun`
+3. `deepseek`
+4. `siliconflow`
+5. `zhipu`
+6. `baidu`
+
+## 6. 测试
+
+运行全量测试：
+
+```bash
+python -m unittest discover -s tests
+```
