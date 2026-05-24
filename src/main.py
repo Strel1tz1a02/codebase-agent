@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.llm.client import configure_llm
+from src.llm.providers import format_provider_help
 from src.qa import answer_project_question
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
@@ -27,8 +28,8 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="V1 项目结构扫描器")
     parser.add_argument("--repo", required=True, help="待分析的本地项目路径")
-    parser.add_argument("--ask", help="V1.5 project question")
-    parser.add_argument("--provider", help="LLM provider: openai or aliyun")
+    parser.add_argument("--ask", help="针对项目提问，触发问答流程")
+    parser.add_argument("--provider", help=f"LLM provider: {format_provider_help()}")
     parser.add_argument("--model", help="LLM model name")
     parser.add_argument("--api-key", dest="api_key", help="LLM API key")
     parser.add_argument("--base-url", dest="base_url", help="LLM API base URL")

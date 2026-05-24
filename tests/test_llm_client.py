@@ -3,13 +3,12 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.llm.client import (
-    PROVIDER_DEFAULT_BASE_URLS,
-    PROVIDER_MODEL_REGISTRY,
-    REGISTERED_PROVIDERS,
-    _runtime_config,
-    ask_llm,
-    configure_llm,
+from src.llm.client import _runtime_config, ask_llm, configure_llm
+from src.llm.providers import (
+    PROVIDER_REGISTRY,
+    get_default_base_url,
+    get_provider_models,
+    get_registered_providers,
 )
 
 
@@ -22,14 +21,16 @@ class TestLLMClient(unittest.TestCase):
         self.assertIn("--provider", answer)
 
     def test_registered_providers_contains_aliyun_and_deepseek(self) -> None:
-        self.assertEqual(REGISTERED_PROVIDERS, {"aliyun", "deepseek"})
+        self.assertEqual(get_registered_providers(), {"aliyun", "deepseek"})
 
     def test_each_provider_has_base_url_config(self) -> None:
-        self.assertEqual(set(PROVIDER_MODEL_REGISTRY), set(PROVIDER_DEFAULT_BASE_URLS))
+        for provider in get_registered_providers():
+            with self.subTest(provider=provider):
+                self.assertTrue(get_default_base_url(provider))
 
     def test_provider_model_registry_contains_core_models(self) -> None:
-        self.assertIn("qwen-plus", PROVIDER_MODEL_REGISTRY["aliyun"])
-        self.assertIn("deepseek-chat", PROVIDER_MODEL_REGISTRY["deepseek"])
+        self.assertIn("qwen-plus", get_provider_models("aliyun"))
+        self.assertIn("deepseek-chat", get_provider_models("deepseek"))
 
     def test_ask_llm_returns_message_when_api_key_missing(self) -> None:
         configure_llm(provider="aliyun", model="qwen-plus")
@@ -92,13 +93,18 @@ class TestLLMClient(unittest.TestCase):
                 self.assertEqual(answer, "answer")
                 mock_openai.assert_called_once_with(
                     api_key="test-key",
-                    base_url=PROVIDER_DEFAULT_BASE_URLS[provider],
+                    base_url=get_default_base_url(provider),
                 )
                 fake_client.chat.completions.create.assert_called_once()
 
     def test_configure_llm_sets_default_base_url_in_runtime_config(self) -> None:
         configure_llm(provider="deepseek")
-        self.assertEqual(_runtime_config["base_url"], PROVIDER_DEFAULT_BASE_URLS["deepseek"])
+        self.assertEqual(_runtime_config["base_url"], get_default_base_url("deepseek"))
+
+    def test_provider_registry_uses_provider_name_as_key(self) -> None:
+        for provider, provider_info in PROVIDER_REGISTRY.items():
+            with self.subTest(provider=provider):
+                self.assertEqual(provider_info.name, provider)
 
 
 if __name__ == "__main__":

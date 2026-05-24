@@ -1,3 +1,4 @@
+# 配置校验、调用模型、解析响应
 from __future__ import annotations
 
 try:
@@ -5,23 +6,18 @@ try:
 except ImportError:
     OpenAI = None
 
+from src.llm.providers import (
+    get_default_base_url,
+    get_provider_models,
+    get_registered_providers,
+)
+
 # 运行时配置，允许通过 configure_llm() 注入参数，ask_llm() 读取使用。
 _runtime_config: dict[str, str] = {
     "provider": "",
     "model": "",
     "api_key": "",
     "base_url": "",
-}
-
-# 已注册的提供商与主流可用模型（含国内常见免费档/免费模型）。
-PROVIDER_MODEL_REGISTRY: dict[str, set[str]] = {
-    "aliyun": {"qwen-turbo", "qwen-plus", "qwen-max"},
-    "deepseek": {"deepseek-chat", "deepseek-reasoner"},
-}
-REGISTERED_PROVIDERS: set[str] = set(PROVIDER_MODEL_REGISTRY.keys())
-PROVIDER_DEFAULT_BASE_URLS: dict[str, str] = {
-    "aliyun": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "deepseek": "https://api.deepseek.com/v1",
 }
 
 
@@ -61,7 +57,7 @@ def configure_llm(
     if base_url is not None:
         _runtime_config["base_url"] = base_url.strip()
     elif _runtime_config["provider"]:
-        _runtime_config["base_url"] = PROVIDER_DEFAULT_BASE_URLS.get(_runtime_config["provider"], "")
+        _runtime_config["base_url"] = get_default_base_url(_runtime_config["provider"])
 
 
 def _load_and_validate_config() -> tuple[dict[str, str] | None, str | None]:
@@ -82,13 +78,13 @@ def _load_and_validate_config() -> tuple[dict[str, str] | None, str | None]:
     api_key = _runtime_config.get("api_key", "").strip()
     base_url = _runtime_config.get("base_url", "").strip()
 
-    if provider not in REGISTERED_PROVIDERS:
+    if provider not in get_registered_providers():
         return None, "LLM 提供商配置错误：请通过 --provider 提供已注册的提供商名称。"
     if not api_key:
         return None, "LLM API Key 缺失：请通过 --api-key 提供。"
     if not model:
         return None, "LLM 模型未配置：请通过 --model 提供。"
-    provider_models = PROVIDER_MODEL_REGISTRY.get(provider, set())
+    provider_models = get_provider_models(provider)
     if model not in provider_models:
         return None, "LLM 模型未命中：当前 provider 未注册该模型，请检查 --model 是否正确。"
 
