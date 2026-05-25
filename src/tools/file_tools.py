@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.utils.file_io import read_utf8_text_file
 from src.utils.ignore import should_ignore_dir, should_ignore_file
 
 # V1 默认入口文件名：用于基于规则识别项目可能的启动入口。
@@ -212,8 +213,7 @@ def read_context_files(
         seen_keys.add(key)
 
         try:
-            with path_obj.open("r", encoding="utf-8") as file_obj:
-                contents[file_path_resolved] = file_obj.read(limit)
+            contents[file_path_resolved] = read_utf8_text_file(path_obj, max_chars=limit)
         except UnicodeDecodeError as exc:
             contents[file_path_resolved] = f"[Error reading file as UTF-8: {exc}]"
         except OSError as exc:

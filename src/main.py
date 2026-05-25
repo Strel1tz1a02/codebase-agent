@@ -12,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.llm.client import configure_llm
 from src.llm.providers import format_provider_help
 from src.qa import answer_project_question
+from src.rag import chunk_code_files, load_code_files
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
 
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", help="LLM model name")
     parser.add_argument("--api-key", dest="api_key", help="LLM API key")
     parser.add_argument("--base-url", dest="base_url", help="LLM API base URL")
+    parser.add_argument("--build-chunks", action="store_true", help="V2: build code chunks only")
     return parser.parse_args()
 
 
@@ -48,6 +50,23 @@ def main() -> None:
         作为程序入口，保持流程清晰：解析参数 -> 扫描 -> 渲染/问答 -> 输出。
     """
     args = parse_args()
+
+    if getattr(args, "build_chunks", False):
+        file_records = load_code_files(args.repo)
+        chunks = chunk_code_files(file_records)
+        print(f"Total files: {len(file_records)}")
+        print(f"Total chunks: {len(chunks)}")
+        print()
+        print("Top 5 chunks:")
+        for chunk in chunks[:5]:
+            content_preview = str(chunk.get("content", "")).replace("\n", "\\n")[:120]
+            print(f"- id: {chunk.get('id', '')}")
+            print(f"  relative_path: {chunk.get('relative_path', '')}")
+            print(f"  start_line: {chunk.get('start_line', 0)}")
+            print(f"  end_line: {chunk.get('end_line', 0)}")
+            print(f"  preview: {content_preview}")
+        return
+
     scan_result = run_v1_scan(args.repo)
 
     if args.ask:
