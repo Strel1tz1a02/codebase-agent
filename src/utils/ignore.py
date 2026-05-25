@@ -4,12 +4,15 @@ from pathlib import Path
 
 # V1 默认忽略目录：这些目录通常是依赖、缓存或构建产物，不属于业务源码。
 DEFAULT_IGNORED_DIRS = {
-    ".git",  # Git 元数据目录，体积可能较大，且不参与业务逻辑分析。
-    "node_modules",  # Node.js 依赖目录，文件数量巨大，属于第三方依赖代码。
-    "__pycache__",  # Python 字节码缓存目录，自动生成，无需分析。
-    ".venv",  # Python 虚拟环境目录，包含解释器与安装包，不是项目源码。
-    "dist",  # 打包产物目录，通常由构建流程生成。
-    "build",  # 构建中间产物或输出目录，通常不需要纳入源码分析。
+    ".git",
+    ".pytest_cache",
+    ".vscode",
+    ".idea",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "dist",
+    "build",
 }
 
 # V1 默认忽略文件：与源码分析无关的系统噪声文件。
