@@ -13,6 +13,7 @@ from src.llm.client import configure_llm
 from src.llm.providers import format_provider_help
 from src.qa import answer_project_question
 from src.rag import chunk_code_files, load_code_files
+from src.rag.retrieval import retrieve_relevant_chunks
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
 
@@ -35,6 +36,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key", dest="api_key", help="LLM API key")
     parser.add_argument("--base-url", dest="base_url", help="LLM API base URL")
     parser.add_argument("--build-chunks", action="store_true", help="V2: build code chunks only")
+    parser.add_argument("--ask-mode", choices=["basic", "rag"], default="basic", help="ask mode: basic or rag")
+    parser.add_argument("--top-k", type=int, default=5, help="top K chunks for rag mode")
+    parser.add_argument("--reindex", action="store_true", help="force rebuild rag cache index")
     return parser.parse_args()
 
 
@@ -70,6 +74,27 @@ def main() -> None:
     scan_result = run_v1_scan(args.repo)
 
     if args.ask:
+        ask_mode = getattr(args, "ask_mode", "basic")
+        if ask_mode == "rag":
+            hits = retrieve_relevant_chunks(
+                args.ask,
+                args.repo,
+                top_k=getattr(args, "top_k", 5),
+                reindex=getattr(args, "reindex", False),
+            )
+            print("## Top-K Hits")
+            if hits:
+                for hit in hits:
+                    print(
+                        f"- score={float(hit.get('score', 0.0)):.6f} "
+                        f"id={hit.get('id', '')} "
+                        f"path={hit.get('relative_path', '')} "
+                        f"lines={hit.get('start_line', 0)}-{hit.get('end_line', 0)}"
+                    )
+            else:
+                print("- [NO_HIT]")
+            return
+
         configure_llm(
             provider=args.provider,
             model=args.model,
