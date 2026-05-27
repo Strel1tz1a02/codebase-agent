@@ -11,6 +11,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.llm.client import configure_llm
 from src.llm.providers import format_provider_help
+from src.agent.adapter import next_decision
+from src.agent.controller import run_agent_loop
 from src.qa import answer_project_question
 from src.rag import chunk_code_files, load_code_files
 from src.rag.retrieval import retrieve_relevant_chunks
@@ -36,7 +38,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key", dest="api_key", help="LLM API key")
     parser.add_argument("--base-url", dest="base_url", help="LLM API base URL")
     parser.add_argument("--build-chunks", action="store_true", help="V2: build code chunks only")
-    parser.add_argument("--ask-mode", choices=["basic", "rag"], default="basic", help="ask mode: basic or rag")
+    parser.add_argument(
+        "--ask-mode",
+        choices=["basic", "rag", "agent"],
+        default="basic",
+        help="ask mode: basic or rag or agent",
+    )
     parser.add_argument("--top-k", type=int, default=5, help="top K chunks for rag mode")
     parser.add_argument("--reindex", action="store_true", help="force rebuild rag cache index")
     return parser.parse_args()
@@ -71,10 +78,39 @@ def main() -> None:
             print(f"  preview: {content_preview}")
         return
 
-    scan_result = run_v1_scan(args.repo)
-
     if args.ask:
         ask_mode = getattr(args, "ask_mode", "basic")
+        if ask_mode == "agent":
+            configure_llm(
+                provider=args.provider,
+                model=args.model,
+                api_key=args.api_key,
+                base_url=args.base_url,
+            )
+            agent_result = run_agent_loop(
+                question=args.ask,
+                repo_path=args.repo,
+                llm_decision_func=next_decision,
+            )
+            print("## Agent Status")
+            print(str(agent_result.get("status", "")))
+            print()
+            print("## 回答")
+            print(str(agent_result.get("answer", "")))
+            if "reason" in agent_result:
+                print()
+                print("## 停止原因")
+                print(str(agent_result.get("reason", "")))
+            print()
+            print("## History")
+            history = agent_result.get("history", [])
+            if isinstance(history, list) and history:
+                for item in history:
+                    print(f"- {item}")
+            else:
+                print("- 无")
+            return
+
         if ask_mode == "rag":
             hits = retrieve_relevant_chunks(
                 args.ask,
@@ -95,6 +131,7 @@ def main() -> None:
                 print("- [NO_HIT]")
             return
 
+        scan_result = run_v1_scan(args.repo)
         configure_llm(
             provider=args.provider,
             model=args.model,
@@ -122,6 +159,7 @@ def main() -> None:
             print("- 无")
         return
 
+    scan_result = run_v1_scan(args.repo)
     report = generate_v1_report(scan_result)
     print(report)
 

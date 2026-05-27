@@ -50,6 +50,46 @@ class TestMainCLI(unittest.TestCase):
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
 
+    def test_main_agent_mode_runs_agent_loop_and_prints_result(self) -> None:
+        fake_args = Namespace(
+            repo="E:\\projects\\demo_repo",
+            ask="入口在哪里？",
+            ask_mode="agent",
+            provider="aliyun",
+            model="qwen-plus",
+            api_key="test-key",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        fake_agent_result = {
+            "status": "stopped",
+            "answer": "",
+            "reason": "max_steps reached",
+            "history": [{"type": "tool_result", "data": {"ok": False}}],
+        }
+
+        with patch("src.main.parse_args", return_value=fake_args), patch(
+            "src.main.run_agent_loop", return_value=fake_agent_result
+        ) as mock_run_agent_loop, patch("src.main.configure_llm") as mock_configure_llm, patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as fake_stdout:
+            main()
+
+        output = fake_stdout.getvalue()
+        self.assertIn("## Agent Status", output)
+        self.assertIn("stopped", output)
+        self.assertIn("## 回答", output)
+        self.assertIn("## 停止原因", output)
+        self.assertIn("max_steps reached", output)
+        self.assertIn("## History", output)
+        self.assertIn("tool_result", output)
+        mock_configure_llm.assert_called_once_with(
+            provider="aliyun",
+            model="qwen-plus",
+            api_key="test-key",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+        mock_run_agent_loop.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
