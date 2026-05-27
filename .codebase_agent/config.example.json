@@ -1,0 +1,17 @@
+{
+  "repo": "E:\\projects\\codebase-agent",
+  "ask_mode": "agent",
+  "llm": {
+    "provider": "aliyun",
+    "model": "qwen-plus",
+    "api_key_env": "CODEBASE_AGENT_API_KEY",
+    "base_url": ""
+  },
+  "rag": {
+    "top_k": 5,
+    "reindex": false
+  },
+  "agent": {
+    "max_steps": 3
+  }
+}

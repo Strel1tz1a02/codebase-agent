@@ -11,14 +11,31 @@ from src.main import main
 class TestMainChunksCLI(unittest.TestCase):
     def test_build_chunks_prints_summary_and_skips_llm_path(self) -> None:
         fake_args = Namespace(
+            config=".codebase_agent/config.json",
             repo="E:\\projects\\demo_repo",
             ask=None,
+            ask_mode="basic",
             provider=None,
             model=None,
             api_key=None,
             base_url=None,
             build_chunks=True,
+            top_k=5,
+            reindex=False,
+            max_steps=None,
         )
+        fake_config = {
+            "repo": "E:\\projects\\demo_repo",
+            "ask_mode": "basic",
+            "llm": {
+                "provider": "aliyun",
+                "model": "qwen-plus",
+                "api_key_env": "CODEBASE_AGENT_API_KEY",
+                "base_url": "",
+            },
+            "rag": {"top_k": 5, "reindex": False},
+            "agent": {"max_steps": 3},
+        }
         fake_files = [
             {
                 "file_path": "E:\\projects\\demo_repo\\src\\a.py",
@@ -38,6 +55,8 @@ class TestMainChunksCLI(unittest.TestCase):
         ]
 
         with patch("src.main.parse_args", return_value=fake_args), patch(
+            "src.main.load_app_config", return_value=fake_config
+        ), patch(
             "src.main.load_code_files", return_value=fake_files
         ) as mock_loader, patch("src.main.chunk_code_files", return_value=fake_chunks) as mock_chunker, patch(
             "src.main.answer_project_question"

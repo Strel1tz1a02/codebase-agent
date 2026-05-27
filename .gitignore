@@ -230,3 +230,6 @@ Desktop.ini
 # 本地临时文件
 *.tmp
 *.bak
+
+# local runtime config (contains machine-specific values)
+.codebase_agent/config.json

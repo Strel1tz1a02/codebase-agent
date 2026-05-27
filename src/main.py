@@ -13,6 +13,7 @@ from src.llm.client import configure_llm
 from src.llm.providers import format_provider_help
 from src.agent.adapter import next_decision
 from src.agent.controller import run_agent_loop
+from src.config import DEFAULT_CONFIG_PATH, get_llm_config, load_app_config, merge_cli_args
 from src.qa import answer_project_question
 from src.rag import chunk_code_files, load_code_files
 from src.rag.retrieval import retrieve_relevant_chunks
@@ -31,7 +32,8 @@ def parse_args() -> argparse.Namespace:
         参数解析与业务逻辑解耦，便于后续扩展更多开关。
     """
     parser = argparse.ArgumentParser(description="V1 项目结构扫描器")
-    parser.add_argument("--repo", required=True, help="待分析的本地项目路径")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="应用配置文件路径")
+    parser.add_argument("--repo", help="待分析的本地项目路径（可覆盖配置文件）")
     parser.add_argument("--ask", help="针对项目提问，触发问答流程")
     parser.add_argument("--provider", help=f"LLM provider: {format_provider_help()}")
     parser.add_argument("--model", help="LLM model name")
@@ -46,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--top-k", type=int, default=5, help="top K chunks for rag mode")
     parser.add_argument("--reindex", action="store_true", help="force rebuild rag cache index")
+    parser.add_argument("--max-steps", type=int, help="max steps for agent loop")
     return parser.parse_args()
 
 
@@ -61,9 +64,37 @@ def main() -> None:
         作为程序入口，保持流程清晰：解析参数 -> 扫描 -> 渲染/问答 -> 输出。
     """
     args = parse_args()
+    config_path = str(getattr(args, "config", DEFAULT_CONFIG_PATH))
+    app_config: dict[str, object]
+    try:
+        app_config = load_app_config(config_path)
+    except FileNotFoundError:
+        print(
+            f"配置文件不存在：{config_path}\n"
+            "请先复制 .codebase_agent/config.example.json 为 .codebase_agent/config.json 并按需修改。"
+        )
+        app_config = {}
+
+    merged_config = merge_cli_args(app_config, args)
+    repo_path = str(merged_config.get("repo", "")).strip()
+    ask_mode = str(merged_config.get("ask_mode", "basic")).strip() or "basic"
+
+    rag_cfg = merged_config.get("rag", {})
+    if not isinstance(rag_cfg, dict):
+        rag_cfg = {}
+    top_k = int(rag_cfg.get("top_k", 5))
+    reindex = bool(rag_cfg.get("reindex", False))
+
+    agent_cfg = merged_config.get("agent", {})
+    if not isinstance(agent_cfg, dict):
+        agent_cfg = {}
+    max_steps = int(agent_cfg.get("max_steps", 3))
 
     if getattr(args, "build_chunks", False):
-        file_records = load_code_files(args.repo)
+        if not repo_path:
+            print("缺少 repo 配置：请在 config.json 中设置 repo 或通过 --repo 传入。")
+            return
+        file_records = load_code_files(repo_path)
         chunks = chunk_code_files(file_records)
         print(f"Total files: {len(file_records)}")
         print(f"Total chunks: {len(chunks)}")
@@ -79,18 +110,23 @@ def main() -> None:
         return
 
     if args.ask:
-        ask_mode = getattr(args, "ask_mode", "basic")
+        if not repo_path:
+            print("缺少 repo 配置：请在 config.json 中设置 repo 或通过 --repo 传入。")
+            return
+
         if ask_mode == "agent":
+            llm_cfg = get_llm_config(merged_config)
             configure_llm(
-                provider=args.provider,
-                model=args.model,
-                api_key=args.api_key,
-                base_url=args.base_url,
+                provider=llm_cfg.get("provider"),
+                model=llm_cfg.get("model"),
+                api_key=llm_cfg.get("api_key"),
+                base_url=llm_cfg.get("base_url"),
             )
             agent_result = run_agent_loop(
                 question=args.ask,
-                repo_path=args.repo,
+                repo_path=repo_path,
                 llm_decision_func=next_decision,
+                max_steps=max_steps,
             )
             print("## Agent Status")
             print(str(agent_result.get("status", "")))
@@ -114,9 +150,9 @@ def main() -> None:
         if ask_mode == "rag":
             hits = retrieve_relevant_chunks(
                 args.ask,
-                args.repo,
-                top_k=getattr(args, "top_k", 5),
-                reindex=getattr(args, "reindex", False),
+                repo_path,
+                top_k=top_k,
+                reindex=reindex,
             )
             print("## Top-K Hits")
             if hits:
@@ -131,12 +167,13 @@ def main() -> None:
                 print("- [NO_HIT]")
             return
 
-        scan_result = run_v1_scan(args.repo)
+        scan_result = run_v1_scan(repo_path)
+        llm_cfg = get_llm_config(merged_config)
         configure_llm(
-            provider=args.provider,
-            model=args.model,
-            api_key=args.api_key,
-            base_url=args.base_url,
+            provider=llm_cfg.get("provider"),
+            model=llm_cfg.get("model"),
+            api_key=llm_cfg.get("api_key"),
+            base_url=llm_cfg.get("base_url"),
         )
         qa_result = answer_project_question(scan_result, args.ask)
         answer_text = str(qa_result.get("answer", ""))
@@ -159,7 +196,10 @@ def main() -> None:
             print("- 无")
         return
 
-    scan_result = run_v1_scan(args.repo)
+    if not repo_path:
+        print("缺少 repo 配置：请在 config.json 中设置 repo 或通过 --repo 传入。")
+        return
+    scan_result = run_v1_scan(repo_path)
     report = generate_v1_report(scan_result)
     print(report)
 
