@@ -5,7 +5,9 @@
 当前实现状态：
 
 1. V1：项目结构扫描器
-2. V1.5：基于关键文件上下文的 LLM 项目问答（不使用 RAG）
+2. V1.5：基于关键文件上下文的 LLM 项目问答
+3. V2：代码切块与 RAG 检索
+4. V3：最小 Agent 循环，支持 LLM 决策、工具执行和 history 记录
 
 ## 1. 环境要求
 
@@ -18,63 +20,154 @@
 pip install -r requirements.txt
 ```
 
-> `requirements.txt` 当前最小依赖为 `openai>=1.0.0`。
+## 3. 本地配置
 
-## 3. V1：项目结构扫描
+项目使用本地配置文件减少 CLI 参数。提交仓库的是配置模板，不提交真实配置。
 
-```bash
-python src/main.py --repo E:\projects\test_project_v1
+模板文件：
+
+```text
+.codebase_agent/config.example.json
 ```
 
-输出包含：
+真实配置文件：
 
-1. 项目目录树
-2. 文件总数
-3. 文件类型统计
-4. 主要目录
-5. 入口候选文件
-6. 忽略路径
-
-## 4. V1.5：项目问答
-
-V1.5 使用命令行参数注入 LLM 配置（不依赖环境变量）：
-
-必填参数：
-
-1. `--provider`
-2. `--model`
-3. `--api-key`
-
-可选参数：
-
-1. `--base-url`
-
-示例（阿里云兼容模式）：
-
-```bash
-python src/main.py --repo E:\projects\codebase-agent --ask "这个项目入口在哪里？" --provider aliyun --model qwen-plus --api-key <你的key> --base-url https://dashscope.aliyuncs.com/compatible-mode/v1
+```text
+.codebase_agent/config.json
 ```
 
-输出包含：
+首次使用时复制模板：
 
-1. `Prompt`
-2. `回答`
-3. `使用的上下文文件`
+```powershell
+Copy-Item .codebase_agent\config.example.json .codebase_agent\config.json
+```
 
-## 5. 已注册 Provider 与模型
+真实 API Key 不写入配置文件，配置文件只保存环境变量名：
 
-当前在 `src/llm/client.py` 中维护注册表（`PROVIDER_MODEL_REGISTRY`），调用时要求模型命中当前 provider 的注册集合。
+```json
+{
+  "llm": {
+    "api_key_env": "CODEBASE_AGENT_API_KEY"
+  }
+}
+```
 
-已注册 provider：
+PowerShell 临时设置 API Key：
 
-1. `openai`
-2. `aliyun`
-3. `deepseek`
-4. `siliconflow`
-5. `zhipu`
-6. `baidu`
+```powershell
+$env:CODEBASE_AGENT_API_KEY="你的真实 key"
+```
 
-## 6. 测试
+长期保存：
+
+```powershell
+setx CODEBASE_AGENT_API_KEY "你的真实 key"
+```
+
+`.codebase_agent/config.json` 已加入 `.gitignore`，不要提交真实配置。
+
+## 4. 常用命令
+
+项目结构扫描：
+
+```bash
+python src/main.py
+```
+
+日常 Agent 问答（默认读取配置里的 `ask_mode`）：
+
+```bash
+python src/main.py --ask "入口在哪"
+```
+
+临时切换为基础问答：
+
+```bash
+python src/main.py --ask "入口在哪" --ask-mode basic
+```
+
+临时切换为 RAG 检索：
+
+```bash
+python src/main.py --ask "入口在哪" --ask-mode rag
+```
+
+强制重建 RAG 索引：
+
+```bash
+python src/main.py --ask "入口在哪" --ask-mode rag --reindex
+```
+
+构建代码 chunks：
+
+```bash
+python src/main.py --build-chunks
+```
+
+临时覆盖仓库路径：
+
+```bash
+python src/main.py --repo E:\projects\other_repo --ask "入口在哪"
+```
+
+临时覆盖 LLM 配置：
+
+```bash
+python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --base-url https://dashscope.aliyuncs.com/compatible-mode/v1
+```
+
+## 5. 配置字段说明
+
+`.codebase_agent/config.example.json` 示例：
+
+```json
+{
+  "repo": "E:\\projects\\codebase-agent",
+  "ask_mode": "agent",
+  "llm": {
+    "provider": "aliyun",
+    "model": "qwen-plus",
+    "api_key_env": "CODEBASE_AGENT_API_KEY",
+    "base_url": ""
+  },
+  "rag": {
+    "top_k": 5,
+    "reindex": false
+  },
+  "agent": {
+    "max_steps": 3
+  }
+}
+```
+
+字段含义：
+
+1. `repo`：默认分析的本地代码仓库路径。
+2. `ask_mode`：问答模式，可选 `basic`、`rag`、`agent`。
+3. `llm.provider`：LLM provider，目前支持 `aliyun`、`deepseek`。
+4. `llm.model`：模型名称，需要命中 provider 的注册模型。
+5. `llm.api_key_env`：保存真实 API Key 的环境变量名。
+6. `llm.base_url`：可选 API 地址；为空时使用 provider 默认地址。
+7. `rag.top_k`：RAG 模式返回的 chunk 数量。
+8. `rag.reindex`：是否默认重建 RAG 索引。
+9. `agent.max_steps`：Agent 循环最大步数。
+
+## 6. Agent 模式当前边界
+
+当前 Agent 模式已经跑通最小链路：
+
+```text
+AgentContext -> build_prompt -> ask_llm -> parse_llm -> run_agent_loop -> execute_tool -> history
+```
+
+当前工具仍是 stub：
+
+1. `tool_stub_a`
+2. `tool_stub_b`
+
+下一步可以把 stub 替换成真实代码仓库工具，例如读取文件、查入口、查符号。
+
+## 7. 测试
 
 运行全量测试：
 
