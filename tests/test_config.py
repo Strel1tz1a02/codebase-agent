@@ -53,6 +53,26 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(merged["rag"]["reindex"])
         self.assertEqual(merged["agent"]["max_steps"], 5)
 
+    def test_none_cli_values_do_not_override_config_defaults(self) -> None:
+        config = {
+            "ask_mode": "agent",
+            "rag": {"top_k": 9, "reindex": False},
+        }
+        args = Namespace(
+            repo=None,
+            ask_mode=None,
+            provider=None,
+            model=None,
+            api_key=None,
+            base_url=None,
+            top_k=None,
+            reindex=False,
+            max_steps=None,
+        )
+        merged = merge_cli_args(config, args)
+        self.assertEqual(merged["ask_mode"], "agent")
+        self.assertEqual(merged["rag"]["top_k"], 9)
+
     def test_get_llm_config_reads_api_key_from_env(self) -> None:
         os.environ["CODEBASE_AGENT_API_KEY"] = "env-key"
         config = {

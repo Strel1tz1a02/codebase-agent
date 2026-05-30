@@ -43,10 +43,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ask-mode",
         choices=["basic", "rag", "agent"],
-        default="basic",
+        default=None,
         help="ask mode: basic or rag or agent",
     )
-    parser.add_argument("--top-k", type=int, default=5, help="top K chunks for rag mode")
+    parser.add_argument("--top-k", type=int, default=None, help="top K chunks for rag mode")
     parser.add_argument("--reindex", action="store_true", help="force rebuild rag cache index")
     parser.add_argument("--max-steps", type=int, help="max steps for agent loop")
     return parser.parse_args()
