@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from src.agent.executor import TOOL_REGISTRY, execute_tool
+from src.agent.tools import TOOL_REGISTRY, execute_tool
 from src.agent.schemas import AgentContext, validate_decision_payload
 
 
@@ -57,9 +57,13 @@ def run_agent_loop(
             }
         )
 
+        arguments = dict(decision["arguments"])
+        if "repo_path" not in arguments:
+            arguments["repo_path"] = repo_path
+
         tool_result = execute_tool(
             tool_name=str(decision["tool_name"]),
-            arguments=dict(decision["arguments"]),
+            arguments=arguments,
         )
         context.history.append(
             {

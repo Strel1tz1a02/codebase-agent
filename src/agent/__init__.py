@@ -6,11 +6,9 @@ from src.agent.adapter import (
     parse_llm,
 )
 from src.agent.controller import run_agent_loop
-from src.agent.executor import (
+from src.agent.tools import (
     TOOL_REGISTRY,
     execute_tool,
-    tool_stub_a,
-    tool_stub_b,
 )
 from src.agent.schemas import (
     AgentContext,
@@ -30,6 +28,4 @@ __all__ = [
     "run_agent_loop",
     "TOOL_REGISTRY",
     "execute_tool",
-    "tool_stub_a",
-    "tool_stub_b",
 ]

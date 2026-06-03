@@ -23,8 +23,17 @@ def build_prompt(context: dict[str, object]) -> str:
         "请基于给定 context 做下一步决策。\n"
         "只允许返回 JSON，不要输出任何解释文字。\n"
         "只允许以下两种格式之一：\n"
-        '{"decision":"tool","tool_name":"tool_stub_a","arguments":{}}\n'
+        '{"decision":"tool","tool_name":"repo_summary","arguments":{}}\n'
+        '{"decision":"tool","tool_name":"read_file","arguments":{"path":"src/main.py"}}\n'
+        '{"decision":"tool","tool_name":"search_code","arguments":{"keyword":"run_agent_loop","scope":"src"}}\n'
         '{"decision":"answer","answer":"..."}\n\n'
+        "repo_summary 用于查看仓库的文件数、主要目录和入口候选。\n"
+        "如果问题要求先查看仓库概况，优先调用 repo_summary。\n\n"
+        "read_file 用于读取仓库内指定文件内容，arguments.path 必须是仓库内相对路径。\n"
+        "如果问题要求读取、查看或解释某个具体文件，优先调用 read_file。\n\n"
+        "search_code 用于按关键词搜索代码文件并返回相对路径、行号和当前行文本。\n"
+        "search_code.arguments.scope 可选 src/tests/docs/all；默认用 src。\n"
+        "如果问题包含明确函数名、类名或关键词，优先调用 search_code；除非用户明确要求测试、文档或全仓库，否则 scope 使用 src。\n\n"
         "context:\n"
         f"{context_json}\n"
     )

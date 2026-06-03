@@ -12,7 +12,7 @@ class TestAgentAdapter(unittest.TestCase):
             "question": "入口在哪",
             "repo_path": "E:\\projects\\codebase-agent",
             "history": [],
-            "allowed_tools": ["tool_stub_a", "tool_stub_b"],
+            "allowed_tools": ["repo_summary", "read_file"],
         }
 
         prompt = build_prompt(context)
@@ -21,6 +21,8 @@ class TestAgentAdapter(unittest.TestCase):
         self.assertIn('"decision":"answer"', prompt)
         self.assertIn('"question": "入口在哪"', prompt)
         self.assertIn('"allowed_tools": [', prompt)
+        self.assertIn('"tool_name":"search_code"', prompt)
+        self.assertIn('"scope":"src"', prompt)
 
     def test_parse_llm_supports_plain_json(self) -> None:
         payload = parse_llm('{"decision":"answer","answer":"ok"}')
@@ -28,10 +30,10 @@ class TestAgentAdapter(unittest.TestCase):
         self.assertEqual(payload["answer"], "ok")
 
     def test_parse_llm_supports_json_fenced_block(self) -> None:
-        text = '```json\n{"decision":"tool","tool_name":"tool_stub_a","arguments":{}}\n```'
+        text = '```json\n{"decision":"tool","tool_name":"repo_summary","arguments":{}}\n```'
         payload = parse_llm(text)
         self.assertEqual(payload["decision"], "tool")
-        self.assertEqual(payload["tool_name"], "tool_stub_a")
+        self.assertEqual(payload["tool_name"], "repo_summary")
 
     def test_parse_llm_returns_invalid_payload_on_parse_failure(self) -> None:
         payload = parse_llm("not json")
@@ -43,7 +45,7 @@ class TestAgentAdapter(unittest.TestCase):
             "question": "入口在哪",
             "repo_path": "E:\\projects\\codebase-agent",
             "history": [],
-            "allowed_tools": ["tool_stub_a"],
+            "allowed_tools": ["repo_summary"],
         }
 
         with patch(

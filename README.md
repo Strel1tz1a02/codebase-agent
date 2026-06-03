@@ -160,12 +160,13 @@ python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --ba
 AgentContext -> build_prompt -> ask_llm -> parse_llm -> run_agent_loop -> execute_tool -> history
 ```
 
-当前工具仍是 stub：
+当前已有真实工具：
 
-1. `tool_stub_a`
-2. `tool_stub_b`
+1. `repo_summary`：查看仓库文件数、主要目录、文件类型统计和入口候选。
+2. `read_file`：读取仓库内指定文件内容，并限制路径不能逃出仓库。
+3. `search_code`：按关键词搜索代码文件，返回相对路径、行号和当前行文本；默认只搜索 `src/`，可通过 `scope` 搜索 `tests`、`docs` 或 `all`。
 
-下一步可以把 stub 替换成真实代码仓库工具，例如读取文件、查入口、查符号。
+下一步可以继续增加真实代码仓库工具，例如 `retrieve_code`。
 
 ## 7. 测试
 
