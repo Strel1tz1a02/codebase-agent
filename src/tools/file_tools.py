@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.utils.file_io import read_utf8_text_file
 from src.utils.ignore import should_ignore_dir, should_ignore_file
 
 # V1 默认入口文件名：用于基于规则识别项目可能的启动入口。
@@ -119,6 +120,106 @@ def find_entry_candidates(files: list[str]) -> list[str]:
     src_candidates.sort()
     other_candidates.sort()
     return src_candidates + other_candidates
+
+
+def select_context_files(
+    scan_result: dict[str, object],
+    repo_path: str,
+    max_files: int = 8,
+) -> list[str]:
+    """
+    输入：
+        scan_result：run_v1_scan() 返回的扫描结果。
+        repo_path：项目根目录路径。
+        max_files：最多返回多少个上下文文件。
+    输出：
+        稳定顺序的绝对路径列表。
+    作用：
+        为 V1.5 项目问答挑选少量高价值文件作为上下文。
+    设计原因：
+        LLM 上下文窗口有限，V1.5 需要在构造 prompt 前先做简单规则筛选。
+    """
+    root = Path(repo_path).resolve()
+    priority_candidates = [
+        root / "README.md",
+        root / "pyproject.toml",
+        root / "requirements.txt",
+        root / "package.json",
+        root / "main.py",
+        root / "app.py",
+        root / "src" / "main.py",
+        root / "src" / "app.py",
+    ]
+
+    entry_candidates = scan_result.get("entry_candidates", [])
+    if isinstance(entry_candidates, list):
+        for item in entry_candidates:
+            if not isinstance(item, str):
+                continue
+            candidate = Path(item)
+            if not candidate.is_absolute():
+                candidate = root / candidate
+            priority_candidates.append(candidate)
+
+    selected_files: list[str] = []
+    seen_paths: set[str] = set()
+    limit = max(0, max_files)
+
+    for candidate in priority_candidates:
+        if len(selected_files) >= limit:
+            break
+
+        candidate = candidate.resolve()
+        key = str(candidate).casefold()
+        if key in seen_paths:
+            continue
+        if not candidate.is_file():
+            continue
+
+        seen_paths.add(key)
+        selected_files.append(str(candidate))
+
+    return selected_files
+
+
+def read_context_files(
+    file_paths: list[str],
+    max_chars_per_file: int = 8000,
+) -> dict[str, str]:
+    """
+    输入：
+        file_paths：要读取的上下文文件路径列表。
+        max_chars_per_file：每个文件最多读取的字符数。
+    输出：
+        文件绝对路径到文件内容的映射字典。
+    作用：
+        读取 V1.5 问答需要的源码/配置/文档文本内容。
+    设计原因：
+        prompt 构造需要真实文件内容，同时要限制单文件长度，避免超长文件占满上下文。
+    """
+    contents: dict[str, str] = {}
+    limit = max(0, max_chars_per_file)
+    seen_keys: set[str] = set()
+
+    for file_path in file_paths:
+        path_obj = Path(file_path)
+        if not path_obj.is_file():
+            continue
+        
+        file_path_resolved = str(path_obj.resolve())
+        key = str(file_path_resolved).casefold()
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        try:
+            contents[file_path_resolved] = read_utf8_text_file(path_obj, max_chars=limit)
+        except UnicodeDecodeError as exc:
+            contents[file_path_resolved] = f"[Error reading file as UTF-8: {exc}]"
+        except OSError as exc:
+            contents[file_path_resolved] = f"[Error reading file: {exc}]"
+
+    return contents
 
 
 def summarize_key_dirs(files: list[str], repo_path: str) -> list[str]:
