@@ -37,7 +37,10 @@ class TestAgentExecutor(unittest.TestCase):
     def test_read_file_returns_repository_file_content(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
 
-        result = execute_tool("read_file", {"repo_path": repo_path, "path": "src/main.py"})
+        result = execute_tool(
+            "read_file",
+            {"repo_path": repo_path, "path": "src/main.py", "max_chars": 20000},
+        )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "read_file")

@@ -21,6 +21,95 @@ from src.rag.retrieval import retrieve_relevant_chunks
 from src.tools.file_tools import generate_v1_report, run_v1_scan
 
 
+def _format_history_arguments(arguments: dict[str, object]) -> str:
+    """
+    输入:
+        arguments: 工具调用参数字典。
+    输出:
+        str: 适合终端阅读的一行参数文本。
+    作用:
+        把 {"keyword": "...", "scope": "..."} 这类参数转成 key=value 形式。
+    为什么需要这个函数:
+        终端直接打印 dict 噪声较大，格式化后更容易看清 Agent 为什么调用某个工具。
+    """
+    if not arguments:
+        return "{}"
+    return ", ".join(f"{key}={value}" for key, value in arguments.items())
+
+
+def _print_history(history: object) -> None:
+    """
+    输入:
+        history: Agent 返回结果中的 history 字段。
+    输出:
+        无，直接打印到终端。
+    作用:
+        将 Agent 的 decision/tool_result 历史格式化成分步骤的终端输出。
+    为什么需要这个函数:
+        原始 history 是嵌套字典，直接打印不利于调试。分步骤输出可以清楚看到
+        LLM 选择了什么工具、传了什么参数、工具返回了什么摘要。
+    """
+    print("## History")
+    if not isinstance(history, list) or not history:
+        print("- 无")
+        return
+
+    step_number = 0
+    for item in history:
+        if not isinstance(item, dict):
+            print(f"- {item}")
+            continue
+
+        item_type = str(item.get("type", ""))
+        data = item.get("data", {})
+        if not isinstance(data, dict):
+            print(f"- {item}")
+            continue
+
+        if item_type == "decision":
+            step_number += 1
+            tool_name = str(data.get("tool_name", ""))
+            arguments = data.get("arguments", {})
+            if not isinstance(arguments, dict):
+                arguments = {}
+
+            print(f"### Step {step_number}: Decision")
+            print(f"- Decision: {data.get('decision', '')}")
+            if tool_name:
+                print(f"- Tool: {tool_name}")
+            print(f"- Arguments: {_format_history_arguments(arguments)}")
+            continue
+
+        if item_type == "tool_result":
+            if step_number == 0:
+                step_number = 1
+
+            print(f"### Step {step_number}: Tool Result")
+            print(f"- Tool: {data.get('tool_name', '')}")
+            print(f"- OK: {data.get('ok', False)}")
+            error = str(data.get("error", ""))
+            if error:
+                print(f"- Error: {error}")
+
+            output = data.get("output", {})
+            if isinstance(output, dict):
+                matches = output.get("matches", [])
+                if isinstance(matches, list):
+                    print(f"- Matches: {len(matches)}")
+                    for index, match in enumerate(matches[:5], start=1):
+                        if not isinstance(match, dict):
+                            continue
+                        print(
+                            f"  {index}. "
+                            f"{match.get('path', '')}:"
+                            f"{match.get('line', '')} "
+                            f"{match.get('text', '')}"
+                        )
+            continue
+
+        print(f"- {item}")
+
+
 def parse_args() -> argparse.Namespace:
     """
     输入：
@@ -147,13 +236,7 @@ def main() -> None:
                 print("## 停止原因")
                 print(str(agent_result.get("reason", "")))
             print()
-            print("## History")
-            history = agent_result.get("history", [])
-            if isinstance(history, list) and history:
-                for item in history:
-                    print(f"- {item}")
-            else:
-                print("- 无")
+            _print_history(agent_result.get("history", []))
             return
 
         if ask_mode == "rag":

@@ -120,7 +120,8 @@ class TestMainCLI(unittest.TestCase):
         self.assertIn("## 停止原因", output)
         self.assertIn("max_steps reached", output)
         self.assertIn("## History", output)
-        self.assertIn("tool_result", output)
+        self.assertIn("### Step 1: Tool Result", output)
+        self.assertIn("- OK: False", output)
         mock_configure_llm.assert_called_once_with(
             provider="aliyun",
             model="qwen-plus",
@@ -159,7 +160,38 @@ class TestMainCLI(unittest.TestCase):
         fake_graph_result = {
             "status": "completed",
             "answer": "entry is src/main.py",
-            "history": [{"type": "tool_result", "data": {"ok": True}}],
+            "history": [
+                {
+                    "type": "decision",
+                    "data": {
+                        "decision": "tool",
+                        "tool_name": "search_code",
+                        "arguments": {"keyword": "run_agent_loop", "scope": "src"},
+                    },
+                },
+                {
+                    "type": "tool_result",
+                    "data": {
+                        "ok": True,
+                        "tool_name": "search_code",
+                        "output": {
+                            "matches": [
+                                {
+                                    "path": "src/agent/controller.py",
+                                    "line": 9,
+                                    "text": "def run_agent_loop(",
+                                },
+                                {
+                                    "path": "src/main.py",
+                                    "line": 15,
+                                    "text": "from src.agent.controller import run_agent_loop",
+                                }
+                            ]
+                        },
+                        "error": "",
+                    },
+                },
+            ],
         }
 
         with patch("src.main.parse_args", return_value=fake_args), patch(
@@ -176,7 +208,14 @@ class TestMainCLI(unittest.TestCase):
         self.assertIn("completed", output)
         self.assertIn("entry is src/main.py", output)
         self.assertIn("## History", output)
-        self.assertIn("tool_result", output)
+        self.assertIn("### Step 1: Decision", output)
+        self.assertIn("- Tool: search_code", output)
+        self.assertIn("- Arguments: keyword=run_agent_loop, scope=src", output)
+        self.assertIn("### Step 1: Tool Result", output)
+        self.assertIn("- OK: True", output)
+        self.assertIn("- Matches: 2", output)
+        self.assertIn("  1. src/agent/controller.py:9 def run_agent_loop(", output)
+        self.assertIn("  2. src/main.py:15 from src.agent.controller import run_agent_loop", output)
         mock_configure_llm.assert_called_once_with(
             provider="aliyun",
             model="qwen-plus",
