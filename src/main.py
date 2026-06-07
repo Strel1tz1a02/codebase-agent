@@ -13,6 +13,7 @@ from src.llm.client import configure_llm
 from src.llm.providers import format_provider_help
 from src.agent.adapter import next_decision
 from src.agent.controller import run_agent_loop
+from src.agent.graph import run_agent_graph
 from src.config import DEFAULT_CONFIG_PATH, get_llm_config, load_app_config, merge_cli_args
 from src.qa import answer_project_question
 from src.rag import chunk_code_files, load_code_files
@@ -42,9 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-chunks", action="store_true", help="V2: build code chunks only")
     parser.add_argument(
         "--ask-mode",
-        choices=["basic", "rag", "agent"],
+        choices=["basic", "rag", "agent", "graph"],
         default=None,
-        help="ask mode: basic or rag or agent",
+        help="ask mode: basic or rag or agent or graph",
     )
     parser.add_argument("--top-k", type=int, default=None, help="top K chunks for rag mode")
     parser.add_argument("--reindex", action="store_true", help="force rebuild rag cache index")
@@ -114,7 +115,7 @@ def main() -> None:
             print("缺少 repo 配置：请在 config.json 中设置 repo 或通过 --repo 传入。")
             return
 
-        if ask_mode == "agent":
+        if ask_mode in {"agent", "graph"}:
             llm_cfg = get_llm_config(merged_config)
             configure_llm(
                 provider=llm_cfg.get("provider"),
@@ -122,12 +123,20 @@ def main() -> None:
                 api_key=llm_cfg.get("api_key"),
                 base_url=llm_cfg.get("base_url"),
             )
-            agent_result = run_agent_loop(
-                question=args.ask,
-                repo_path=repo_path,
-                llm_decision_func=next_decision,
-                max_steps=max_steps,
-            )
+            if ask_mode == "graph":
+                agent_result = run_agent_graph(
+                    question=args.ask,
+                    repo_path=repo_path,
+                    llm_decision_func=next_decision,
+                    max_steps=max_steps,
+                )
+            else:
+                agent_result = run_agent_loop(
+                    question=args.ask,
+                    repo_path=repo_path,
+                    llm_decision_func=next_decision,
+                    max_steps=max_steps,
+                )
             print("## Agent Status")
             print(str(agent_result.get("status", "")))
             print()

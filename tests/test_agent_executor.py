@@ -113,7 +113,7 @@ class TestAgentExecutor(unittest.TestCase):
 
         result = execute_tool(
             "search_code",
-            {"repo_path": repo_path, "keyword": "run_agent_loop", "scope": "all"},
+            {"repo_path": repo_path, "keyword": "run_agent_loop", "scope": "all", "limit": 100},
         )
 
         self.assertTrue(result.ok)
