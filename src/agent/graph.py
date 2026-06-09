@@ -56,6 +56,7 @@ def _build_initial_state(
     repo_path: str,
     llm_decision_func: Callable[[dict[str, object]], dict[str, object]],
     max_steps: int,
+    messages: list[dict[str, str]] | None = None,
 ) -> AgentGraphState:
     """
     输入:
@@ -63,6 +64,7 @@ def _build_initial_state(
         repo_path: 要分析的仓库路径。
         llm_decision_func: LLM 决策函数。
         max_steps: 最大工具调用步数。
+        messages: Runtime 传入的多轮对话消息。
     输出:
         AgentGraphState 初始状态字典。
     作用:
@@ -74,6 +76,7 @@ def _build_initial_state(
     return {
         "question": question,
         "repo_path": repo_path,
+        "messages": list(messages or []),
         "allowed_tools": list(TOOL_REGISTRY.keys()),
         "history": [],
         "decision": {},
@@ -135,6 +138,7 @@ def run_agent_graph(
     repo_path: str,
     llm_decision_func: Callable[[dict[str, object]], dict[str, object]],
     max_steps: int = 3,
+    messages: list[dict[str, str]] | None = None,
 ) -> dict[str, object]:
     """
     输入:
@@ -142,6 +146,7 @@ def run_agent_graph(
         repo_path: 要分析的仓库路径。
         llm_decision_func: 可注入的 LLM 决策函数，输入 context 字典，输出 decision 字典。
         max_steps: 最大工具调用步数。
+        messages: Runtime 传入的多轮对话消息。
     输出:
         dict[str, object]，包含 status、answer、history，停止时还包含 reason。
     作用:
@@ -155,6 +160,7 @@ def run_agent_graph(
         repo_path=repo_path,
         llm_decision_func=llm_decision_func,
         max_steps=max_steps,
+        messages=messages,
     )
 
     graph = build_agent_graph()

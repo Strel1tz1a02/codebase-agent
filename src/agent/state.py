@@ -19,6 +19,7 @@ class AgentGraphState(TypedDict, total=False):# typedDict 允许我们定义一�
 
     question: str
     repo_path: str
+    messages: list[dict[str, str]]
     allowed_tools: list[str]
     history: list[dict[str, object]]
     decision: dict[str, object]

@@ -23,6 +23,7 @@ def decide_next_action(state: AgentGraphState) -> AgentGraphState:
     context = {
         "question": state.get("question", ""),
         "repo_path": state.get("repo_path", ""),
+        "messages": state.get("messages", []),
         "history": state.get("history", []),
         "allowed_tools": state.get("allowed_tools", []),
     }

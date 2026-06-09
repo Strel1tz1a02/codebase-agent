@@ -28,6 +28,9 @@ def build_prompt(context: dict[str, object]) -> str:
         '{"decision":"tool","tool_name":"search_code","arguments":{"keyword":"run_agent_loop","scope":"src"}}\n'
         '{"decision":"tool","tool_name":"retrieve_code","arguments":{"query":"agent loop tool execution","top_k":5}}\n'
         '{"decision":"answer","answer":"..."}\n\n'
+        "context.messages 是当前 session 的多轮对话历史，按时间顺序排列。\n"
+        "如果当前问题是追问，例如“那它呢”“继续解释”“它怎么运行”，请结合 messages 理解用户指代。\n"
+        "messages 只用于理解对话上下文；工具调用仍然必须基于当前 question 选择合适工具。\n\n"
         "repo_summary 用于查看仓库的文件数、主要目录和入口候选。\n"
         "如果问题要求先查看仓库概况，优先调用 repo_summary。\n\n"
         "read_file 用于读取仓库内指定文件内容，arguments.path 必须是仓库内相对路径。\n"

@@ -252,8 +252,7 @@ RAG、Tool Calling、基于引用的幻觉控制。
 2. 增加内存 session store。
 3. 在多轮对话中保留 conversation history。
 4. 增加结构化 trace 记录。
-5. 增加工具执行失败的 retry policy。
-6. 增加清晰的 stop reason。
+5. 增加清晰的 stop reason。
 
 简历能力：
 
@@ -293,6 +292,7 @@ Python 后端、API 开发、服务边界、后端测试。
 4. 将现有工具重构进 registry。
 5. 在执行前增加 permission check。
 6. 增加非法参数、未知工具、被拒绝工具的测试。
+7. 增加工具执行失败的 retry policy。
 
 简历能力：
 

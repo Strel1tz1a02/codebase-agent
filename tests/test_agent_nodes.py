@@ -19,12 +19,14 @@ class TestAgentNodes(unittest.TestCase):
             self.assertEqual(context["repo_path"], "E:\\projects\\codebase-agent")
             self.assertEqual(context["history"], [])
             self.assertEqual(context["allowed_tools"], ["repo_summary"])
+            self.assertEqual(context["messages"], [{"role": "user", "content": "where is entry"}])
             return {"decision": "answer", "answer": "entry is src/main.py"}
 
         state = {
             "question": "where is entry",
             "repo_path": "E:\\projects\\codebase-agent",
             "history": [],
+            "messages": [{"role": "user", "content": "where is entry"}],
             "allowed_tools": ["repo_summary"],
             "llm_decision_func": fake_llm,
         }

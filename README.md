@@ -10,6 +10,7 @@
 4. V3：最小 Agent 循环，支持 LLM 决策、工具执行和 history 记录
 5. V4：基于 LangGraph 的 Agent workflow，支持 `--ask-mode graph`
 6. V5：RAG 检索接入 Agent 工具层，新增 `retrieve_code`
+7. V6：新增 Agent Runtime 与 Session Memory，支持多轮消息、运行摘要和 LangGraph runner 适配
 
 ## 1. 环境要求
 
@@ -175,7 +176,14 @@ AgentContext -> build_prompt -> ask_llm -> parse_llm -> run_agent_loop -> execut
 3. `search_code`：按关键词搜索代码文件，返回相对路径、行号和当前行文本；默认只搜索 `src/`，可通过 `scope` 搜索 `tests`、`docs` 或 `all`。
 4. `retrieve_code`：基于 RAG 索引做语义代码检索，返回相对路径、行号范围、内容和分数。Agent 使用该结果回答时应包含 `[relative_path:start_line-end_line]` 格式引用。
 
-下一步可以继续把 Agent 从一次性 runner 升级为带 Session Memory 的 runtime。
+V6 已新增 Runtime 层：
+
+1. `Session`：保存一次会话的 messages、trace 和 status。
+2. `SessionMemory`：在内存中创建和查找 session。
+3. `AgentRuntime`：把用户问题写入 session，调用 agent runner，并保存 assistant 回答。
+4. `build_graph_agent_runner()`：把 Runtime payload 适配到 LangGraph `run_agent_graph()`。
+
+当前 V6 暂不实现 retry policy；后续会在 V8 工具协议或 Runtime 增强阶段做更细粒度 retry。
 
 ## 7. 测试
 

@@ -35,12 +35,14 @@ class TestAgentGraph(unittest.TestCase):
 
     def test_run_agent_graph_completes_when_llm_returns_answer(self) -> None:
         def fake_llm(context: dict[str, object]) -> dict[str, object]:
+            self.assertEqual(context["messages"], [{"role": "user", "content": "where is entry"}])
             return {"decision": "answer", "answer": "entry is src/main.py"}
 
         result = run_agent_graph(
             question="where is entry",
             repo_path="E:\\projects\\codebase-agent",
             llm_decision_func=fake_llm,
+            messages=[{"role": "user", "content": "where is entry"}],
         )
 
         self.assertEqual(result["status"], "completed")
