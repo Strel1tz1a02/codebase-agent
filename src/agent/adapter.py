@@ -26,6 +26,7 @@ def build_prompt(context: dict[str, object]) -> str:
         '{"decision":"tool","tool_name":"repo_summary","arguments":{}}\n'
         '{"decision":"tool","tool_name":"read_file","arguments":{"path":"src/main.py"}}\n'
         '{"decision":"tool","tool_name":"search_code","arguments":{"keyword":"run_agent_loop","scope":"src"}}\n'
+        '{"decision":"tool","tool_name":"retrieve_code","arguments":{"query":"agent loop tool execution","top_k":5}}\n'
         '{"decision":"answer","answer":"..."}\n\n'
         "repo_summary 用于查看仓库的文件数、主要目录和入口候选。\n"
         "如果问题要求先查看仓库概况，优先调用 repo_summary。\n\n"
@@ -34,6 +35,10 @@ def build_prompt(context: dict[str, object]) -> str:
         "search_code 用于按关键词搜索代码文件并返回相对路径、行号和当前行文本。\n"
         "search_code.arguments.scope 可选 src/tests/docs/all；默认用 src。\n"
         "如果问题包含明确函数名、类名或关键词，优先调用 search_code；除非用户明确要求测试、文档或全仓库，否则 scope 使用 src。\n\n"
+        "retrieve_code 用于基于 RAG 索引做语义检索，返回 relative_path、start_line、end_line、content 和 score。\n"
+        "如果问题是概念性、流程性、跨文件理解，或没有明确关键词，优先调用 retrieve_code。\n"
+        "retrieve_code.arguments.query 应该是用户问题的精简检索语句，top_k 默认 5。\n"
+        "如果最终答案使用了 retrieve_code 的结果，必须包含引用，格式为 [relative_path:start_line-end_line]。\n\n"
         "context:\n"
         f"{context_json}\n"
     )

@@ -8,6 +8,8 @@
 2. V1.5：基于关键文件上下文的 LLM 项目问答
 3. V2：代码切块与 RAG 检索
 4. V3：最小 Agent 循环，支持 LLM 决策、工具执行和 history 记录
+5. V4：基于 LangGraph 的 Agent workflow，支持 `--ask-mode graph`
+6. V5：RAG 检索接入 Agent 工具层，新增 `retrieve_code`
 
 ## 1. 环境要求
 
@@ -92,6 +94,12 @@ python src/main.py --ask "入口在哪" --ask-mode basic
 python src/main.py --ask "入口在哪" --ask-mode rag
 ```
 
+临时切换为 LangGraph Agent：
+
+```bash
+python src/main.py --ask "Agent 工具执行流程是怎样的？" --ask-mode graph --max-steps 4
+```
+
 强制重建 RAG 索引：
 
 ```bash
@@ -143,7 +151,7 @@ python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --ba
 字段含义：
 
 1. `repo`：默认分析的本地代码仓库路径。
-2. `ask_mode`：问答模式，可选 `basic`、`rag`、`agent`。
+2. `ask_mode`：问答模式，可选 `basic`、`rag`、`agent`、`graph`。
 3. `llm.provider`：LLM provider，目前支持 `aliyun`、`deepseek`。
 4. `llm.model`：模型名称，需要命中 provider 的注册模型。
 5. `llm.api_key_env`：保存真实 API Key 的环境变量名。
@@ -165,8 +173,9 @@ AgentContext -> build_prompt -> ask_llm -> parse_llm -> run_agent_loop -> execut
 1. `repo_summary`：查看仓库文件数、主要目录、文件类型统计和入口候选。
 2. `read_file`：读取仓库内指定文件内容，并限制路径不能逃出仓库。
 3. `search_code`：按关键词搜索代码文件，返回相对路径、行号和当前行文本；默认只搜索 `src/`，可通过 `scope` 搜索 `tests`、`docs` 或 `all`。
+4. `retrieve_code`：基于 RAG 索引做语义代码检索，返回相对路径、行号范围、内容和分数。Agent 使用该结果回答时应包含 `[relative_path:start_line-end_line]` 格式引用。
 
-下一步可以继续增加真实代码仓库工具，例如 `retrieve_code`。
+下一步可以继续把 Agent 从一次性 runner 升级为带 Session Memory 的 runtime。
 
 ## 7. 测试
 

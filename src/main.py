@@ -37,6 +37,33 @@ def _format_history_arguments(arguments: dict[str, object]) -> str:
     return ", ".join(f"{key}={value}" for key, value in arguments.items())
 
 
+def _format_history_match(match: dict[str, object]) -> str:
+    """
+    输入:
+        match: search_code 或 retrieve_code 返回的一条命中记录。
+    输出:
+        str: 适合终端展示的一行命中文本。
+    作用:
+        同时支持关键词搜索的 path/line/text 和 RAG 检索的 relative_path/行号区间/content。
+    为什么需要这个函数:
+        V5 新增 retrieve_code 后，History 需要展示可引用的路径和行号范围。
+    """
+    if "relative_path" in match:
+        content_preview = str(match.get("content", "")).strip().replace("\n", "\\n")[:120]
+        return (
+            f"{match.get('relative_path', '')}:"
+            f"{match.get('start_line', '')}-{match.get('end_line', '')} "
+            f"score={float(match.get('score', 0.0)):.6f} "
+            f"{content_preview}"
+        )
+
+    return (
+        f"{match.get('path', '')}:"
+        f"{match.get('line', '')} "
+        f"{match.get('text', '')}"
+    )
+
+
 def _print_history(history: object) -> None:
     """
     输入:
@@ -99,12 +126,7 @@ def _print_history(history: object) -> None:
                     for index, match in enumerate(matches[:5], start=1):
                         if not isinstance(match, dict):
                             continue
-                        print(
-                            f"  {index}. "
-                            f"{match.get('path', '')}:"
-                            f"{match.get('line', '')} "
-                            f"{match.get('text', '')}"
-                        )
+                        print(f"  {index}. {_format_history_match(match)}")
             continue
 
         print(f"- {item}")

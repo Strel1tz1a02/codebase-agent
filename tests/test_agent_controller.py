@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from src.agent.controller import run_agent_loop
+from src.agent.adapter import build_prompt
 
 
 class TestAgentController(unittest.TestCase):
+    def test_agent_prompt_describes_retrieve_code_and_citation_rule(self) -> None:
+        prompt = build_prompt(
+            {
+                "question": "How does the agent execute tools?",
+                "repo_path": "E:\\projects\\codebase-agent",
+                "history": [],
+                "allowed_tools": ["repo_summary", "read_file", "search_code", "retrieve_code"],
+            }
+        )
+
+        self.assertIn('"tool_name":"retrieve_code"', prompt)
+        self.assertIn("基于 RAG 索引做语义检索", prompt)
+        self.assertIn("[relative_path:start_line-end_line]", prompt)
+
     def test_first_step_answer_completes(self) -> None:
         def fake_llm(context: dict[str, object]) -> dict[str, object]:
             return {"decision": "answer", "answer": "entry is src/main.py"}
@@ -142,6 +158,52 @@ class TestAgentController(unittest.TestCase):
                 for match in tool_result["output"]["matches"]
             )
         )
+
+    def test_retrieve_code_result_is_written_to_history(self) -> None:
+        repo_path = str(Path(__file__).resolve().parent.parent)
+        fake_hits = [
+            {
+                "relative_path": "src/agent/tools.py",
+                "start_line": 120,
+                "end_line": 150,
+                "content": "def retrieve_code(...):\n    pass\n",
+                "score": 0.88,
+            }
+        ]
+        decisions = [
+            {
+                "decision": "tool",
+                "tool_name": "retrieve_code",
+                "arguments": {"query": "How is RAG exposed as a tool?", "top_k": 1},
+            },
+            {
+                "decision": "answer",
+                "answer": "RAG is exposed through retrieve_code [src/agent/tools.py:120-150].",
+            },
+        ]
+
+        def fake_llm(context: dict[str, object]) -> dict[str, object]:
+            if context["history"]:
+                tool_result = context["history"][-1]["data"]
+                self.assertEqual(tool_result["tool_name"], "retrieve_code")
+                self.assertEqual(tool_result["output"]["matches"], fake_hits)
+            return decisions.pop(0)
+
+        with patch("src.agent.tools.retrieve_relevant_chunks", return_value=fake_hits):
+            result = run_agent_loop(
+                "How is RAG exposed as a tool?",
+                repo_path,
+                fake_llm,
+                max_steps=2,
+            )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("[src/agent/tools.py:120-150]", result["answer"])
+        self.assertEqual(len(result["history"]), 2)
+        tool_result = result["history"][1]["data"]
+        self.assertTrue(tool_result["ok"])
+        self.assertEqual(tool_result["tool_name"], "retrieve_code")
+        self.assertEqual(tool_result["output"]["matches"], fake_hits)
 
     def test_unknown_tool_is_written_to_history(self) -> None:
         decisions = [

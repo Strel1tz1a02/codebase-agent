@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from src.agent.graph import build_agent_graph, run_agent_graph
 
@@ -95,6 +96,52 @@ class TestAgentGraph(unittest.TestCase):
         self.assertEqual(result["answer"], "")
         self.assertEqual(result["reason"], "max_steps reached")
         self.assertEqual(len(result["history"]), 2)
+
+    def test_run_agent_graph_flows_retrieve_code_context_to_answer(self) -> None:
+        repo_path = str(Path(__file__).resolve().parent.parent)
+        fake_hits = [
+            {
+                "relative_path": "src/rag/retrieval.py",
+                "start_line": 12,
+                "end_line": 60,
+                "content": "def retrieve_relevant_chunks(...):\n    pass\n",
+                "score": 0.93,
+            }
+        ]
+        decisions = [
+            {
+                "decision": "tool",
+                "tool_name": "retrieve_code",
+                "arguments": {"query": "Where is retrieval implemented?", "top_k": 1},
+            },
+            {
+                "decision": "answer",
+                "answer": "Retrieval is implemented in src/rag/retrieval.py [src/rag/retrieval.py:12-60].",
+            },
+        ]
+
+        def fake_llm(context: dict[str, object]) -> dict[str, object]:
+            if context["history"]:
+                tool_result = context["history"][-1]["data"]
+                self.assertEqual(tool_result["tool_name"], "retrieve_code")
+                self.assertEqual(tool_result["output"]["matches"], fake_hits)
+            return decisions.pop(0)
+
+        with patch("src.agent.tools.retrieve_relevant_chunks", return_value=fake_hits):
+            result = run_agent_graph(
+                question="Where is retrieval implemented?",
+                repo_path=repo_path,
+                llm_decision_func=fake_llm,
+                max_steps=2,
+            )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertIn("[src/rag/retrieval.py:12-60]", result["answer"])
+        self.assertEqual(len(result["history"]), 2)
+        tool_result = result["history"][1]["data"]
+        self.assertTrue(tool_result["ok"])
+        self.assertEqual(tool_result["tool_name"], "retrieve_code")
+        self.assertEqual(tool_result["output"]["matches"], fake_hits)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.agent.schemas import ToolResult
+from src.rag.retrieval import retrieve_relevant_chunks
 from src.tools.file_tools import run_v1_scan, scan_files
 
 
@@ -143,10 +144,46 @@ def search_code(arguments: dict[str, object]) -> dict[str, object]:
     }
 
 
+def retrieve_code(arguments: dict[str, object]) -> dict[str, object]:
+    """
+    输入：
+        arguments：工具参数字典，需要 repo_path 和 query，可选 top_k、reindex。
+    输出：
+        dict：包含 query、top_k 和 matches。matches 中保留路径、行号、内容和 score。
+    作用：
+        把已有 RAG 检索能力包装成 Agent 可调用工具。
+    设计原因：
+        V5 只需要把 RAG 接入工具层，不提前重构完整工具协议。
+    """
+    repo_path = str(arguments.get("repo_path", "")).strip()
+    query = str(arguments.get("query", "")).strip()
+    top_k = int(arguments.get("top_k", 5))
+    reindex = bool(arguments.get("reindex", False))
+
+    if not repo_path:
+        raise ValueError("repo_path is required")
+    if not query:
+        raise ValueError("query is required")
+
+    limit = max(0, top_k)
+    matches = retrieve_relevant_chunks(
+        question=query,
+        repo_path=repo_path,
+        top_k=limit,
+        reindex=reindex,
+    )
+    return {
+        "query": query,
+        "top_k": limit,
+        "matches": matches,
+    }
+
+
 TOOL_REGISTRY = {
     "repo_summary": repo_summary,
     "read_file": read_file,
     "search_code": search_code,
+    "retrieve_code": retrieve_code,
 }
 
 

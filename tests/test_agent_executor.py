@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from src.agent.tools import TOOL_REGISTRY, execute_tool
 
@@ -124,6 +125,53 @@ class TestAgentExecutor(unittest.TestCase):
         paths = [str(match["path"]) for match in result.output["matches"]]
         self.assertIn("src/agent/controller.py", paths)
         self.assertTrue(any(path.startswith("tests/") for path in paths))
+
+    def test_retrieve_code_is_registered(self) -> None:
+        self.assertIn("retrieve_code", TOOL_REGISTRY)
+
+    def test_retrieve_code_returns_citable_chunks(self) -> None:
+        repo_path = str(Path(__file__).resolve().parent.parent)
+        fake_hits = [
+            {
+                "relative_path": "src/agent/controller.py",
+                "start_line": 9,
+                "end_line": 70,
+                "content": "def run_agent_loop(...):\n    pass\n",
+                "score": 0.91,
+            }
+        ]
+
+        with patch("src.agent.tools.retrieve_relevant_chunks", return_value=fake_hits) as mock_retrieve:
+            result = execute_tool(
+                "retrieve_code",
+                {
+                    "repo_path": repo_path,
+                    "query": "How does the agent loop execute tools?",
+                    "top_k": 1,
+                },
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.tool_name, "retrieve_code")
+        self.assertEqual(result.error, "")
+        self.assertEqual(result.output["query"], "How does the agent loop execute tools?")
+        self.assertEqual(result.output["top_k"], 1)
+        self.assertEqual(result.output["matches"], fake_hits)
+        mock_retrieve.assert_called_once_with(
+            question="How does the agent loop execute tools?",
+            repo_path=repo_path,
+            top_k=1,
+            reindex=False,
+        )
+
+    def test_retrieve_code_requires_query(self) -> None:
+        repo_path = str(Path(__file__).resolve().parent.parent)
+
+        result = execute_tool("retrieve_code", {"repo_path": repo_path})
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.tool_name, "retrieve_code")
+        self.assertIn("query is required", result.error)
 
     def test_unknown_tool_returns_failed_result(self) -> None:
         result = execute_tool("missing_tool", {})

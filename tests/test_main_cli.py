@@ -224,6 +224,83 @@ class TestMainCLI(unittest.TestCase):
         )
         mock_run_agent_graph.assert_called_once()
 
+    def test_main_graph_mode_prints_retrieve_code_history_matches(self) -> None:
+        fake_args = Namespace(
+            config=".codebase_agent/config.json",
+            repo="E:\\projects\\demo_repo",
+            ask="How does retrieval work?",
+            ask_mode="graph",
+            provider="aliyun",
+            model="qwen-plus",
+            api_key="test-key",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            build_chunks=False,
+            top_k=5,
+            reindex=False,
+            max_steps=4,
+        )
+        fake_config = {
+            "repo": "E:\\projects\\demo_repo",
+            "ask_mode": "graph",
+            "llm": {
+                "provider": "aliyun",
+                "model": "qwen-plus",
+                "api_key_env": "CODEBASE_AGENT_API_KEY",
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            },
+            "rag": {"top_k": 5, "reindex": False},
+            "agent": {"max_steps": 4},
+        }
+        fake_graph_result = {
+            "status": "completed",
+            "answer": "RAG lives in retrieval.py [src/rag/retrieval.py:12-60].",
+            "history": [
+                {
+                    "type": "decision",
+                    "data": {
+                        "decision": "tool",
+                        "tool_name": "retrieve_code",
+                        "arguments": {"query": "retrieval workflow", "top_k": 1},
+                    },
+                },
+                {
+                    "type": "tool_result",
+                    "data": {
+                        "ok": True,
+                        "tool_name": "retrieve_code",
+                        "output": {
+                            "matches": [
+                                {
+                                    "relative_path": "src/rag/retrieval.py",
+                                    "start_line": 12,
+                                    "end_line": 60,
+                                    "content": "def retrieve_relevant_chunks(...):\n    pass\n",
+                                    "score": 0.93,
+                                }
+                            ]
+                        },
+                        "error": "",
+                    },
+                },
+            ],
+        }
+
+        with patch("src.main.parse_args", return_value=fake_args), patch(
+            "src.main.load_app_config", return_value=fake_config
+        ), patch(
+            "src.main.run_agent_graph", return_value=fake_graph_result
+        ), patch("src.main.configure_llm"), patch(
+            "sys.stdout", new_callable=io.StringIO
+        ) as fake_stdout:
+            main()
+
+        output = fake_stdout.getvalue()
+        self.assertIn("- Matches: 1", output)
+        self.assertIn(
+            "  1. src/rag/retrieval.py:12-60 score=0.930000 def retrieve_relevant_chunks(...):",
+            output,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
