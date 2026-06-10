@@ -1,0 +1,1222 @@
+# LangGraph 与 LangChain 成熟化重构实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 将当前实验型 codebase-agent 重构为以 LangGraph 编排、LangChain 标准组件为基础的成熟工程项目。
+
+**Architecture:** 先建立新架构边界，再逐步把 LLM、工具、RAG、Graph、Runtime、API、CLI 迁移到新路径。迁移期间保留旧模块作为参考，直到新路径测试覆盖完成后再删除。
+
+**Tech Stack:** Python 3.11、FastAPI、LangGraph、LangChain Core、LangChain OpenAI、Pydantic、pytest、本地 VectorStore。
+
+---
+
+## 开发总流程
+
+本次重构分为 8 个阶段。每个阶段都要有一个可验证的小目标，不把多个架构层同时打散。
+
+1. **阶段 0：建立基线**
+   小目标：确认当前测试和现有行为，给后续破坏性重构一个参照点。
+
+2. **阶段 1：依赖与配置边界**
+   小目标：新增成熟化依赖和 `core/models` 边界，但不改变现有 CLI/API。
+
+3. **阶段 2：LangChain 工具层**
+   小目标：把现有工具改造成 LangChain-compatible tools，并保留结构化输出。
+
+4. **阶段 3：RAG 标准化**
+   小目标：用 `Document`、embedding factory、VectorStore、Retriever 替代 hash embedding 和全局内存索引。
+
+5. **阶段 4：LangGraph workflow 重建**
+   小目标：移除自定义 decision JSON 协议，建立显式 graph state、nodes、routing。
+
+6. **阶段 5：Runtime project/session/run 模型**
+   小目标：把一次 ask 升级成 project、session、run、event 生命周期。
+
+7. **阶段 6：API 和 CLI 重做**
+   小目标：把外部接口切到 project/session/run 资源模型和工作流命令。
+
+8. **阶段 7：清理旧代码与文档**
+   小目标：删除旧版本入口和过时测试，更新 README，让项目只暴露成熟化路径。
+
+---
+
+## 阶段 0：建立基线
+
+**目标：** 在重构前确认当前代码能跑，记录哪些测试会被后续替换。
+
+**Files:**
+- Read: `requirements.txt`
+- Read: `src/main.py`
+- Read: `src/api/app.py`
+- Read: `src/agent/graph.py`
+- Read: `src/rag/retrieval.py`
+- Read: `tests/`
+
+- [ ] **Step 0.1：运行当前测试基线**
+
+Run:
+
+```bash
+python -m pytest
+```
+
+Expected:
+
+```text
+当前测试全部通过；如果有失败，记录失败测试名称和原因，不在本阶段修复架构问题。
+```
+
+- [ ] **Step 0.2：记录将被替换的旧边界**
+
+记录以下模块的迁移去向：
+
+```text
+src/llm/client.py       -> src/models/chat.py
+src/llm/providers.py    -> src/models/providers.py
+src/agent/tools.py      -> src/tools/registry.py + src/tools/*.py
+src/rag/embeddings.py   -> src/models/embeddings.py
+src/rag/index.py        -> src/rag/vectorstores.py
+src/rag/retrieval.py    -> src/rag/retrievers.py
+src/agent/graph.py      -> src/graph/builder.py
+src/runtime/runtime.py  -> src/runtime/runs.py + src/runtime/sessions.py
+src/api/app.py          -> src/api/routes_*.py
+src/main.py             -> src/cli/main.py
+```
+
+- [ ] **Step 0.3：提交基线记录**
+
+Commit message:
+
+```bash
+git add docs/superpowers/plans/2026-06-11-langgraph-langchain-mature-refactor.md
+git commit -m "docs: add mature refactor implementation plan"
+```
+
+---
+
+## 阶段 1：依赖与配置边界
+
+**目标：** 添加 LangChain 相关依赖，建立 `core` 和 `models`，让后续模块只依赖标准工厂。
+
+**Files:**
+- Modify: `requirements.txt`
+- Create: `src/core/__init__.py`
+- Create: `src/core/config.py`
+- Create: `src/core/errors.py`
+- Create: `src/core/paths.py`
+- Create: `src/models/__init__.py`
+- Create: `src/models/providers.py`
+- Create: `src/models/chat.py`
+- Create: `src/models/embeddings.py`
+- Test: `tests/test_core_config.py`
+- Test: `tests/test_models_chat.py`
+
+- [ ] **Step 1.1：写配置测试**
+
+Create `tests/test_core_config.py`:
+
+```python
+from src.core.config import ModelConfig, AppConfig
+
+
+def test_model_config_normalizes_provider():
+    config = ModelConfig(provider="Aliyun", model="qwen-plus", api_key_env="KEY")
+
+    assert config.provider == "aliyun"
+    assert config.model == "qwen-plus"
+    assert config.api_key_env == "KEY"
+
+
+def test_app_config_defaults_to_local_vector_store():
+    config = AppConfig()
+
+    assert config.vector_store.provider == "local"
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_core_config.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.core.config 尚不存在。
+```
+
+- [ ] **Step 1.2：实现配置类型和错误类型**
+
+Create `src/core/errors.py`:
+
+```python
+class CodebaseAgentError(Exception):
+    """Base error for codebase-agent domain failures."""
+
+
+class ConfigurationError(CodebaseAgentError):
+    pass
+
+
+class ProviderError(CodebaseAgentError):
+    pass
+
+
+class ProjectNotFoundError(CodebaseAgentError):
+    pass
+
+
+class IndexNotReadyError(CodebaseAgentError):
+    pass
+
+
+class PathSafetyError(CodebaseAgentError):
+    pass
+
+
+class ToolExecutionError(CodebaseAgentError):
+    pass
+
+
+class GraphExecutionError(CodebaseAgentError):
+    pass
+```
+
+Create `src/core/config.py`:
+
+```python
+from __future__ import annotations
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class ModelConfig(BaseModel):
+    provider: str = "aliyun"
+    model: str = "qwen-plus"
+    api_key_env: str = "CODEBASE_AGENT_API_KEY"
+    base_url: str = ""
+    temperature: float = 0.2
+
+    @field_validator("provider")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class EmbeddingConfig(BaseModel):
+    provider: str = "local"
+    model: str = "local-hash"
+
+
+class VectorStoreConfig(BaseModel):
+    provider: str = "local"
+    persist_dir: str = ".codebase_agent/vectorstores"
+
+
+class RetrievalConfig(BaseModel):
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class AppConfig(BaseModel):
+    model: ModelConfig = Field(default_factory=ModelConfig)
+    embeddings: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    vector_store: VectorStoreConfig = Field(default_factory=VectorStoreConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_core_config.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 1.3：补充 LangChain 依赖**
+
+Modify `requirements.txt`:
+
+```text
+openai>=1.0.0
+langgraph
+langchain-core
+langchain-openai
+langchain-community
+fastapi
+uvicorn
+httpx
+pydantic
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_core_config.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 1.4：实现 chat model factory 测试**
+
+Create `tests/test_models_chat.py`:
+
+```python
+import os
+
+import pytest
+
+from src.core.config import ModelConfig
+from src.core.errors import ConfigurationError
+from src.models.chat import build_chat_model
+
+
+def test_build_chat_model_requires_api_key_env(monkeypatch):
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+    config = ModelConfig(api_key_env="MISSING_KEY")
+
+    with pytest.raises(ConfigurationError):
+        build_chat_model(config)
+
+
+def test_build_chat_model_uses_openai_compatible_base_url(monkeypatch):
+    monkeypatch.setenv("TEST_KEY", "secret")
+    config = ModelConfig(
+        provider="deepseek",
+        model="deepseek-chat",
+        api_key_env="TEST_KEY",
+        base_url="https://api.deepseek.com/v1",
+    )
+
+    model = build_chat_model(config)
+
+    assert model.model_name == "deepseek-chat"
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_models_chat.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.models.chat 尚不存在。
+```
+
+- [ ] **Step 1.5：实现 chat model factory**
+
+Create `src/models/chat.py`:
+
+```python
+from __future__ import annotations
+
+import os
+
+from langchain_openai import ChatOpenAI
+
+from src.core.config import ModelConfig
+from src.core.errors import ConfigurationError
+
+
+DEFAULT_BASE_URLS = {
+    "aliyun": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+}
+
+
+def build_chat_model(config: ModelConfig) -> ChatOpenAI:
+    api_key = os.getenv(config.api_key_env, "").strip()
+    if not api_key:
+        raise ConfigurationError(f"missing api key env: {config.api_key_env}")
+
+    base_url = config.base_url or DEFAULT_BASE_URLS.get(config.provider, "")
+    return ChatOpenAI(
+        model=config.model,
+        api_key=api_key,
+        base_url=base_url or None,
+        temperature=config.temperature,
+    )
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_core_config.py tests/test_models_chat.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 1.6：提交阶段 1**
+
+Commit:
+
+```bash
+git add requirements.txt src/core src/models tests/test_core_config.py tests/test_models_chat.py
+git commit -m "feat: add core config and model factories"
+```
+
+---
+
+## 阶段 2：LangChain 工具层
+
+**目标：** 把现有 `repo_summary`、`read_file`、`search_code`、`retrieve_code` 改造成 LangChain-compatible tools。
+
+**Files:**
+- Create: `src/tools/registry.py`
+- Create: `src/tools/filesystem.py`
+- Create: `src/tools/codebase.py`
+- Modify: `src/tools/__init__.py`
+- Test: `tests/test_tools_langchain_registry.py`
+- Test: `tests/test_tools_path_safety.py`
+
+- [ ] **Step 2.1：写工具注册测试**
+
+Create `tests/test_tools_langchain_registry.py`:
+
+```python
+from src.tools.registry import build_tools
+
+
+def test_build_tools_contains_expected_names():
+    tools = build_tools()
+    names = {tool.name for tool in tools}
+
+    assert names == {"repo_summary", "read_file", "search_code", "retrieve_code"}
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_tools_langchain_registry.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.tools.registry 尚不存在。
+```
+
+- [ ] **Step 2.2：实现 LangChain tool registry**
+
+Create `src/tools/registry.py`:
+
+```python
+from __future__ import annotations
+
+from langchain_core.tools import BaseTool
+
+from src.tools.codebase import repo_summary_tool, search_code_tool
+from src.tools.filesystem import read_file_tool
+from src.tools.codebase import retrieve_code_tool
+
+
+def build_tools() -> list[BaseTool]:
+    return [
+        repo_summary_tool,
+        read_file_tool,
+        search_code_tool,
+        retrieve_code_tool,
+    ]
+```
+
+Create minimal tool modules by wrapping existing implementation first. Do not rewrite behavior yet.
+
+Run:
+
+```bash
+python -m pytest tests/test_tools_langchain_registry.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 2.3：写路径安全测试**
+
+Create `tests/test_tools_path_safety.py`:
+
+```python
+import pytest
+
+from src.core.errors import PathSafetyError
+from src.core.paths import resolve_repo_path
+
+
+def test_resolve_repo_path_rejects_escape(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    with pytest.raises(PathSafetyError):
+        resolve_repo_path(str(repo), "../outside.txt")
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_tools_path_safety.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.core.paths 尚未实现。
+```
+
+- [ ] **Step 2.4：实现统一路径安全函数**
+
+Create `src/core/paths.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+
+from src.core.errors import PathSafetyError
+
+
+def resolve_repo_path(repo_path: str, relative_path: str) -> Path:
+    root = Path(repo_path).resolve()
+    target = (root / relative_path).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise PathSafetyError("path must stay inside repo") from None
+    return target
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_tools_path_safety.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 2.5：提交阶段 2**
+
+Commit:
+
+```bash
+git add src/core/paths.py src/tools tests/test_tools_langchain_registry.py tests/test_tools_path_safety.py
+git commit -m "feat: add langchain tool registry"
+```
+
+---
+
+## 阶段 3：RAG 标准化
+
+**目标：** 建立 `Document -> Embedding -> VectorStore -> Retriever` 链路。
+
+**Files:**
+- Create: `src/rag/documents.py`
+- Create: `src/rag/vectorstores.py`
+- Create: `src/rag/retrievers.py`
+- Create: `src/rag/indexing.py`
+- Test: `tests/test_rag_documents.py`
+- Test: `tests/test_rag_vectorstores.py`
+- Test: `tests/test_rag_retrievers.py`
+
+- [ ] **Step 3.1：写 Document metadata 测试**
+
+Create `tests/test_rag_documents.py`:
+
+```python
+from src.rag.documents import build_document
+
+
+def test_build_document_preserves_code_metadata():
+    doc = build_document(
+        project_id="demo",
+        repo_path="E:/repo",
+        relative_path="src/main.py",
+        content="print('hi')",
+        start_line=1,
+        end_line=1,
+    )
+
+    assert doc.page_content == "print('hi')"
+    assert doc.metadata["project_id"] == "demo"
+    assert doc.metadata["relative_path"] == "src/main.py"
+    assert doc.metadata["start_line"] == 1
+    assert doc.metadata["end_line"] == 1
+    assert doc.metadata["content_hash"]
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_rag_documents.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.rag.documents 尚不存在。
+```
+
+- [ ] **Step 3.2：实现 Document 构造**
+
+Create `src/rag/documents.py`:
+
+```python
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+
+from langchain_core.documents import Document
+
+
+def infer_language(relative_path: str) -> str:
+    suffix = Path(relative_path).suffix.lower()
+    return {
+        ".py": "python",
+        ".md": "markdown",
+        ".json": "json",
+        ".txt": "text",
+    }.get(suffix, "text")
+
+
+def build_document(
+    project_id: str,
+    repo_path: str,
+    relative_path: str,
+    content: str,
+    start_line: int,
+    end_line: int,
+) -> Document:
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return Document(
+        page_content=content,
+        metadata={
+            "project_id": project_id,
+            "repo_path": repo_path,
+            "relative_path": relative_path,
+            "start_line": start_line,
+            "end_line": end_line,
+            "language": infer_language(relative_path),
+            "content_hash": content_hash,
+        },
+    )
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_rag_documents.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 3.3：实现本地 VectorStore factory**
+
+Use fake embeddings for tests so no real LLM call is required.
+
+Create `src/rag/vectorstores.py`:
+
+```python
+from __future__ import annotations
+
+from langchain_core.embeddings import Embeddings
+from langchain_core.vectorstores import InMemoryVectorStore
+
+
+def build_local_vector_store(embeddings: Embeddings) -> InMemoryVectorStore:
+    return InMemoryVectorStore(embedding=embeddings)
+```
+
+Create `tests/test_rag_vectorstores.py`:
+
+```python
+from langchain_core.embeddings import FakeEmbeddings
+
+from src.rag.vectorstores import build_local_vector_store
+
+
+def test_build_local_vector_store_supports_similarity_search():
+    store = build_local_vector_store(FakeEmbeddings(size=8))
+    store.add_texts(["alpha", "beta"])
+
+    results = store.similarity_search("alpha", k=1)
+
+    assert len(results) == 1
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_rag_vectorstores.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 3.4：提交阶段 3**
+
+Commit:
+
+```bash
+git add src/rag/documents.py src/rag/vectorstores.py tests/test_rag_documents.py tests/test_rag_vectorstores.py
+git commit -m "feat: add langchain rag document and vector store layer"
+```
+
+---
+
+## 阶段 4：LangGraph workflow 重建
+
+**目标：** 建立新 `src/graph`，让 graph 使用标准 messages、retrieval hits、tool calls 和 events。
+
+**Files:**
+- Create: `src/graph/__init__.py`
+- Create: `src/graph/state.py`
+- Create: `src/graph/nodes.py`
+- Create: `src/graph/routing.py`
+- Create: `src/graph/builder.py`
+- Test: `tests/test_graph_state.py`
+- Test: `tests/test_graph_routing.py`
+- Test: `tests/test_graph_builder.py`
+
+- [ ] **Step 4.1：写 graph state 测试**
+
+Create `tests/test_graph_state.py`:
+
+```python
+from src.graph.state import create_initial_state
+
+
+def test_create_initial_state_sets_project_and_question():
+    state = create_initial_state(
+        project_id="demo",
+        repo_path="E:/repo",
+        question="Where is the entry point?",
+    )
+
+    assert state["project_id"] == "demo"
+    assert state["repo_path"] == "E:/repo"
+    assert state["messages"][-1]["role"] == "user"
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_graph_state.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为 src.graph.state 尚不存在。
+```
+
+- [ ] **Step 4.2：实现 graph state**
+
+Create `src/graph/state.py`:
+
+```python
+from __future__ import annotations
+
+from typing import TypedDict
+
+
+class AgentGraphState(TypedDict, total=False):
+    project_id: str
+    repo_path: str
+    messages: list[dict[str, str]]
+    retrieval_hits: list[dict[str, object]]
+    tool_calls: list[dict[str, object]]
+    tool_results: list[dict[str, object]]
+    answer: str
+    status: str
+    reason: str
+    events: list[dict[str, object]]
+
+
+def create_initial_state(project_id: str, repo_path: str, question: str) -> AgentGraphState:
+    return {
+        "project_id": project_id,
+        "repo_path": repo_path,
+        "messages": [{"role": "user", "content": question}],
+        "retrieval_hits": [],
+        "tool_calls": [],
+        "tool_results": [],
+        "answer": "",
+        "status": "running",
+        "reason": "",
+        "events": [],
+    }
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_graph_state.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 4.3：实现最小 graph builder**
+
+Create `tests/test_graph_builder.py`:
+
+```python
+from src.graph.builder import build_graph
+from src.graph.state import create_initial_state
+
+
+def test_build_graph_returns_completed_answer():
+    graph = build_graph()
+    state = create_initial_state("demo", "E:/repo", "hello")
+
+    result = graph.invoke(state)
+
+    assert result["status"] == "completed"
+    assert "answer" in result
+```
+
+Create `src/graph/builder.py`:
+
+```python
+from __future__ import annotations
+
+from langgraph.graph import END, StateGraph
+
+from src.graph.nodes import synthesize_answer
+from src.graph.state import AgentGraphState
+
+
+def build_graph():
+    graph = StateGraph(AgentGraphState)
+    graph.add_node("synthesize_answer", synthesize_answer)
+    graph.set_entry_point("synthesize_answer")
+    graph.add_edge("synthesize_answer", END)
+    return graph.compile()
+```
+
+Create `src/graph/nodes.py`:
+
+```python
+from __future__ import annotations
+
+from src.graph.state import AgentGraphState
+
+
+def synthesize_answer(state: AgentGraphState) -> AgentGraphState:
+    next_state = dict(state)
+    next_state["status"] = "completed"
+    next_state["answer"] = "Graph execution completed."
+    return next_state
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_graph_state.py tests/test_graph_builder.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 4.4：逐步加入 retrieve、tool、validate 节点**
+
+在最小 graph 通过后，再加入节点：
+
+```text
+prepare_context
+classify_intent
+retrieve_context
+plan_tool_use
+execute_tools
+synthesize_answer
+validate_answer
+finish
+```
+
+每增加一个节点都要先写对应测试，例如：
+
+```bash
+python -m pytest tests/test_graph_routing.py -v
+```
+
+Expected:
+
+```text
+每个节点都能通过 fake retriever、fake tool、fake chat model 独立测试。
+```
+
+- [ ] **Step 4.5：提交阶段 4**
+
+Commit:
+
+```bash
+git add src/graph tests/test_graph_state.py tests/test_graph_builder.py tests/test_graph_routing.py
+git commit -m "feat: add langgraph workflow skeleton"
+```
+
+---
+
+## 阶段 5：Runtime project/session/run 模型
+
+**目标：** 用 project/session/run/event 替代单一 `ask` 流程。
+
+**Files:**
+- Create: `src/runtime/projects.py`
+- Create: `src/runtime/sessions.py`
+- Create: `src/runtime/runs.py`
+- Create: `src/runtime/events.py`
+- Test: `tests/test_runtime_projects.py`
+- Test: `tests/test_runtime_runs.py`
+
+- [ ] **Step 5.1：写 project/session/run 生命周期测试**
+
+Create `tests/test_runtime_runs.py`:
+
+```python
+from src.runtime.runs import RuntimeService
+
+
+def test_runtime_creates_run_for_session(tmp_path):
+    runtime = RuntimeService()
+    project = runtime.create_project("demo", str(tmp_path))
+    session = runtime.create_session(project.project_id)
+
+    run = runtime.create_run(session.session_id, "Where is the entry point?")
+
+    assert run.session_id == session.session_id
+    assert run.status == "queued"
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_runtime_runs.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为新 RuntimeService 尚不存在。
+```
+
+- [ ] **Step 5.2：实现内存版 RuntimeService**
+
+Create `src/runtime/runs.py` with in-memory project, session, and run storage. First version only creates records; graph execution can be added after lifecycle tests pass.
+
+Run:
+
+```bash
+python -m pytest tests/test_runtime_runs.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 5.3：接入 graph 执行**
+
+Add `run_graph(run_id)` to RuntimeService:
+
+```python
+def run_graph(self, run_id: str) -> Run:
+    run = self.get_run(run_id)
+    run.status = "running"
+    self.append_event(run_id, "graph_start", {"run_id": run_id})
+
+    session = self.get_session(run.session_id)
+    project = self.get_project(session.project_id)
+    state = create_initial_state(
+        project_id=project.project_id,
+        repo_path=project.repo_path,
+        question=run.question,
+    )
+    result = self.graph.invoke(state)
+
+    run.status = str(result.get("status", "completed"))
+    run.answer = str(result.get("answer", ""))
+    self.append_event(run_id, "graph_finish", {"status": run.status})
+    return run
+```
+
+小目标：
+
+```text
+Run 从 queued -> running -> completed。
+RunEvent 记录 graph start、graph finish。
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_runtime_runs.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 5.4：提交阶段 5**
+
+Commit:
+
+```bash
+git add src/runtime tests/test_runtime_projects.py tests/test_runtime_runs.py
+git commit -m "feat: add project session run runtime model"
+```
+
+---
+
+## 阶段 6：API 和 CLI 重做
+
+**目标：** 切换外部入口到 project/session/run 模型。
+
+**Files:**
+- Modify: `src/api/app.py`
+- Modify: `src/api/schemas.py`
+- Create: `src/api/routes_projects.py`
+- Create: `src/api/routes_sessions.py`
+- Create: `src/api/routes_runs.py`
+- Create: `src/cli/__init__.py`
+- Create: `src/cli/main.py`
+- Test: `tests/test_api_projects.py`
+- Test: `tests/test_api_runs.py`
+- Test: `tests/test_cli_main.py`
+
+- [ ] **Step 6.1：写 API contract 测试**
+
+Create `tests/test_api_projects.py`:
+
+```python
+from fastapi.testclient import TestClient
+
+from src.api.app import create_app
+
+
+def test_create_project_endpoint(tmp_path):
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/projects",
+        json={"name": "demo", "repo_path": str(tmp_path)},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["name"] == "demo"
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_api_projects.py -v
+```
+
+Expected:
+
+```text
+FAIL，因为新 /projects endpoint 尚未实现。
+```
+
+- [ ] **Step 6.2：实现 project/session/run API routes**
+
+新增 routes：
+
+```text
+POST /projects
+GET /projects/{project_id}
+POST /projects/{project_id}/index
+POST /sessions
+GET /sessions/{session_id}
+POST /sessions/{session_id}/runs
+GET /sessions/{session_id}/runs/{run_id}
+GET /sessions/{session_id}/runs/{run_id}/events
+GET /tools
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_api_projects.py tests/test_api_runs.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 6.3：实现新 CLI**
+
+Create `src/cli/main.py` commands:
+
+```text
+index --repo <path> [--project <name>]
+ask --project <project_id> <question>
+serve
+```
+
+Run:
+
+```bash
+python -m pytest tests/test_cli_main.py -v
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 6.4：提交阶段 6**
+
+Commit:
+
+```bash
+git add src/api src/cli tests/test_api_projects.py tests/test_api_runs.py tests/test_cli_main.py
+git commit -m "feat: add project session run api and cli"
+```
+
+---
+
+## 阶段 7：清理旧代码与文档
+
+**目标：** 新路径稳定后，删除旧教学路径，更新 README。
+
+**Files:**
+- Modify: `README.md`
+- Delete or deprecate: `src/main.py`
+- Delete or deprecate: `src/agent/adapter.py`
+- Delete or deprecate: `src/agent/controller.py`
+- Delete or deprecate: `src/agent/graph.py`
+- Delete or deprecate: `src/llm/client.py`
+- Delete or deprecate: `src/rag/embeddings.py`
+- Delete or deprecate: `src/rag/index.py`
+- Update tests under `tests/`
+
+- [ ] **Step 7.1：确认新路径测试全通过**
+
+Run:
+
+```bash
+python -m pytest
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 7.2：删除或标记旧模块**
+
+删除旧模块前，确认没有新代码 import 它们：
+
+```bash
+rg "src\\.agent\\.graph|src\\.llm\\.client|src\\.rag\\.embeddings|src\\.rag\\.index" src tests
+```
+
+Expected:
+
+```text
+无新路径依赖旧模块；只剩待删除旧测试时再同步清理。
+```
+
+- [ ] **Step 7.3：更新 README**
+
+README 应只保留成熟化后的使用方式：
+
+```bash
+python -m src.cli index --repo E:\projects\codebase-agent
+python -m src.cli ask --project codebase-agent "Where is the entry point?"
+python -m src.cli serve
+```
+
+同时说明：
+
+```text
+默认测试不调用真实 LLM。
+真实模型调用需要设置配置中的 api_key_env。
+默认向量存储为本地后端，生产向量库为后续扩展。
+```
+
+- [ ] **Step 7.4：最终验证**
+
+Run:
+
+```bash
+python -m pytest
+```
+
+Expected:
+
+```text
+PASS
+```
+
+- [ ] **Step 7.5：提交阶段 7**
+
+Commit:
+
+```bash
+git add README.md src tests
+git commit -m "refactor: remove legacy agent paths"
+```
+
+---
+
+## 执行纪律
+
+- 每个阶段单独提交。
+- 每个阶段先写测试，再实现。
+- 每次只迁移一个边界，不同时重写 LLM、RAG、Graph、API。
+- 默认测试不访问真实网络和真实 LLM。
+- 旧模块只有在新模块测试覆盖完成后再删除。
+- 如果某阶段发现 LangChain/LangGraph API 与计划不符，先更新计划，再改代码。
+
+## 完成标准
+
+重构完成时应满足：
+
+- `python -m pytest` 全部通过。
+- 项目入口变为 `python -m src.cli index`、`python -m src.cli ask` 和 `python -m src.cli serve`。
+- API 入口变为 project/session/run 模型。
+- Graph 使用 `src/graph` 新 workflow。
+- 工具通过 LangChain-compatible registry 暴露。
+- RAG 使用 LangChain `Document`、Retriever、VectorStore。
+- 旧 decision JSON 协议不再作为主路径存在。
+- README 描述的是成熟化架构，而不是 V1 到 V7 的教学版本路线。
