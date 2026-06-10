@@ -1,5 +1,6 @@
 openai>=1.0.0
 langgraph
+langchain-openai
 fastapi
 uvicorn
 httpx
