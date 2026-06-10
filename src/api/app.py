@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
+from src.agent.adapter import next_decision
 from src.agent.tools import TOOL_REGISTRY
 from src.api.schemas import (
     AskRequest,
@@ -12,8 +13,28 @@ from src.api.schemas import (
     SessionResponse,
     ToolListResponse,
 )
+from src.runtime.graph_runner import build_graph_agent_runner
 from src.runtime.runtime import AgentRuntime
 from src.runtime.session import Session
+
+
+def create_default_runtime() -> AgentRuntime:
+    """
+    输入：
+        无。
+    输出：
+        AgentRuntime：接入默认 LangGraph runner 的 Runtime。
+    作用：
+        为模块级 FastAPI app 提供可直接运行的 AgentRuntime。
+    设计原因：
+        测试仍然可以通过 create_app(runtime=...) 注入 fake runtime；真实服务默认走现有 graph runner。
+    """
+    return AgentRuntime(
+        agent_runner=build_graph_agent_runner(
+            llm_decision_func=next_decision,
+            max_steps=3,
+        )
+    )
 
 
 def _not_found_from_key_error(exc: KeyError) -> HTTPException:
@@ -63,7 +84,7 @@ def create_app(runtime: AgentRuntime | None = None) -> FastAPI:
         create_app 让测试和真实 uvicorn 启动共享同一套路由定义。
     """
     app = FastAPI(title="codebase-agent API")
-    app.state.runtime = runtime or AgentRuntime()
+    app.state.runtime = runtime or create_default_runtime()
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:

@@ -11,6 +11,7 @@
 5. V4：基于 LangGraph 的 Agent workflow，支持 `--ask-mode graph`
 6. V5：RAG 检索接入 Agent 工具层，新增 `retrieve_code`
 7. V6：新增 Agent Runtime 与 Session Memory，支持多轮消息、运行摘要和 LangGraph runner 适配
+8. V7：新增 FastAPI 服务层，支持 health、tools、sessions 和 ask HTTP 接口
 
 ## 1. 环境要求
 
@@ -125,7 +126,55 @@ python src/main.py --repo E:\projects\other_repo --ask "入口在哪"
 python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --base-url https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
-## 5. 配置字段说明
+## 5. FastAPI 服务
+
+V7 把 `AgentRuntime` 暴露成 HTTP API。启动服务：
+
+```bash
+uvicorn src.api.app:app --reload
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+查看工具列表：
+
+```bash
+curl http://127.0.0.1:8000/tools
+```
+
+创建 session：
+
+```bash
+curl -X POST http://127.0.0.1:8000/sessions ^
+  -H "Content-Type: application/json" ^
+  -d "{\"repo_path\":\"E:\\projects\\codebase-agent\"}"
+```
+
+查看 session：
+
+```bash
+curl http://127.0.0.1:8000/sessions/<session_id>
+```
+
+向 session 提问：
+
+```bash
+curl -X POST http://127.0.0.1:8000/sessions/<session_id>/ask ^
+  -H "Content-Type: application/json" ^
+  -d "{\"question\":\"入口在哪？\"}"
+```
+
+说明：
+
+1. API 服务当前使用进程内 session memory，重启服务后 session 会丢失。
+2. 默认 app 会接入 LangGraph runner；真实问答仍依赖已有 LLM 配置。
+3. 测试中通过 `create_app(runtime=...)` 注入 fake runtime，避免真实 LLM 调用。
+
+## 6. 配置字段说明
 
 `.codebase_agent/config.example.json` 示例：
 
@@ -161,7 +210,7 @@ python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --ba
 8. `rag.reindex`：是否默认重建 RAG 索引。
 9. `agent.max_steps`：Agent 循环最大步数。
 
-## 6. Agent 模式当前边界
+## 7. Agent 模式当前边界
 
 当前 Agent 模式已经跑通最小链路：
 
@@ -185,10 +234,20 @@ V6 已新增 Runtime 层：
 
 当前 V6 暂不实现 retry policy；后续会在 V8 工具协议或 Runtime 增强阶段做更细粒度 retry。
 
-## 7. 测试
+V7 已新增 API 服务层：
+
+1. `src/api/schemas.py`：定义 HTTP 请求和响应结构。
+2. `src/api/app.py`：创建 FastAPI app，把 HTTP 请求转交给 `AgentRuntime`。
+3. `GET /health`：服务健康检查。
+4. `GET /tools`：查看当前工具注册表。
+5. `POST /sessions`：创建绑定仓库路径的 session。
+6. `GET /sessions/{session_id}`：查看 session 状态、messages 和 trace。
+7. `POST /sessions/{session_id}/ask`：在指定 session 中提问。
+
+## 8. 测试
 
 运行全量测试：
 
 ```bash
-python -m unittest discover -s tests
+python -m pytest
 ```

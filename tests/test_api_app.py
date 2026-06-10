@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Callable
+from unittest.mock import patch
 
 import httpx
 
 from src.agent.tools import TOOL_REGISTRY
-from src.api.app import create_app
+from src.agent.adapter import next_decision
+from src.api.app import create_app, create_default_runtime
 from src.runtime.memory import SessionMemory
 from src.runtime.runtime import AgentRuntime
 
@@ -86,6 +88,49 @@ class TestApiApp(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json(), {"detail": "session not found: missing-session"})
+
+    def test_create_default_runtime_uses_graph_agent_runner(self) -> None:
+        def fake_runner(payload: dict[str, object]) -> dict[str, object]:
+            return {"status": "completed", "answer": "ok"}
+
+        calls: list[dict[str, object]] = []
+
+        def fake_build_graph_agent_runner(
+            llm_decision_func: Callable[[dict[str, object]], dict[str, object]],
+            max_steps: int,
+        ) -> Callable[[dict[str, object]], dict[str, object]]:
+            calls.append(
+                {
+                    "llm_decision_func": llm_decision_func,
+                    "max_steps": max_steps,
+                }
+            )
+            return fake_runner
+
+        with patch(
+            "src.api.app.build_graph_agent_runner",
+            side_effect=fake_build_graph_agent_runner,
+        ):
+            runtime = create_default_runtime()
+
+        self.assertIs(runtime.agent_runner, fake_runner)
+        self.assertEqual(
+            calls,
+            [
+                {
+                    "llm_decision_func": next_decision,
+                    "max_steps": 3,
+                }
+            ],
+        )
+
+    def test_create_app_uses_default_runtime_when_not_injected(self) -> None:
+        runtime = AgentRuntime(memory=SessionMemory())
+
+        with patch("src.api.app.create_default_runtime", return_value=runtime):
+            app = create_app()
+
+        self.assertIs(app.state.runtime, runtime)
 
     async def test_ask_returns_runner_answer(self) -> None:
         def fake_runner(payload: dict[str, object]) -> dict[str, object]:
