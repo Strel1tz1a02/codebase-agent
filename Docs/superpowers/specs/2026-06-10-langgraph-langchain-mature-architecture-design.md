@@ -1,34 +1,42 @@
-# LangGraph and LangChain Mature Architecture Design
+# LangGraph 与 LangChain 成熟工程化架构设计
 
-## Context
+## 背景
 
-The project is currently a learning-oriented codebase understanding agent. It already has useful boundaries:
+当前项目是一个面向代码仓库理解的 Agent 实验项目，已经形成了若干有价值的边界：
 
-- `src/agent/` contains a custom decision protocol, tools, nodes, and a LangGraph wrapper.
-- `src/runtime/` owns sessions and adapts runtime payloads into the graph runner.
-- `src/rag/` owns custom code loading, chunking, deterministic hash embeddings, in-memory indexing, cache, and retrieval.
-- `src/llm/` calls OpenAI-compatible chat completion APIs directly.
-- `src/api/` exposes a small FastAPI surface for health, tools, sessions, and asks.
+- `src/agent/`：包含自定义决策协议、工具、节点，以及一个 LangGraph 封装。
+- `src/runtime/`：负责 session 管理，并把 runtime payload 适配到 graph runner。
+- `src/rag/`：负责自定义代码加载、切块、确定性 hash embedding、内存索引、缓存和检索。
+- `src/llm/`：直接调用 OpenAI-compatible chat completion API。
+- `src/api/`：暴露基础 FastAPI 接口，包括 health、tools、sessions 和 ask。
 
-The next version should prioritize mature project architecture over backward compatibility. Existing CLI/API contracts may change if the new contracts are clearer and closer to production agent systems.
+下一阶段目标不是继续堆叠教学版本，而是把项目重构成更接近真实工程的代码仓库理解 Agent 服务。根据已确认的取舍，本次允许破坏现有 CLI/API 兼容性，以换取更清晰、更成熟的架构边界。
 
-## Goal
+## 目标
 
-Rebuild the project around LangGraph as the orchestration layer and LangChain as the standard component layer for models, tools, documents, retrievers, embeddings, and vector stores.
+围绕 LangGraph 和 LangChain 重建项目：
 
-The result should feel like a maintainable codebase-agent service rather than a sequence of educational versions.
+- LangGraph 作为 Agent workflow 和有状态编排层。
+- LangChain 作为模型、工具、文档、retriever、embedding、vector store 的标准组件层。
+- 默认使用本地向量存储，保留 Qdrant、Milvus、pgvector 等生产向量库的扩展位。
 
-## Chosen Approach
+最终项目应更像一个可维护、可扩展的 codebase-agent 服务，而不是一组按版本堆叠的实验脚本。
 
-Use a LangGraph-first architecture with LangChain standard components.
+## 已选方案
 
-LangGraph will own the long-running, stateful workflow. LangChain will provide replaceable abstractions for chat models, tool schemas, documents, embeddings, retrievers, and vector stores. The current hand-written tool registry, decision JSON protocol, hash embedding implementation, and in-memory vector index should be replaced or wrapped by these standard interfaces.
+采用 **LangGraph 主架构 + LangChain 标准组件**。
 
-This is preferred over using a high-level LangChain agent alone because codebase analysis needs explicit control over retrieval, local file access, tool safety, traceability, and future human-in-the-loop checkpoints.
+LangGraph 负责长流程、有状态、可追踪的 Agent 编排。LangChain 提供可替换的标准抽象，包括 chat model、tool schema、document、embedding、retriever 和 vector store。
 
-## Architecture
+当前手写的工具注册表、LLM 决策 JSON 协议、hash embedding、全局内存向量索引，都应被标准组件替换或包裹。
 
-### Proposed Package Layout
+不直接使用高层 LangChain Agent 作为主架构的原因是：代码仓库分析需要更强的流程控制能力，包括检索优先级、本地文件访问安全、工具调用边界、trace 记录，以及未来可能加入的人类确认节点。
+
+## 架构设计
+
+### 目录结构
+
+建议重组为以下结构：
 
 ```text
 src/
@@ -76,65 +84,65 @@ src/
     registry.py
 ```
 
-The split is by responsibility:
+各目录职责如下：
 
-- `core` contains configuration, path safety, shared types, and domain errors.
-- `models` creates LangChain chat models and embeddings from project config.
-- `tools` exposes LangChain-compatible tools with Pydantic argument schemas.
-- `rag` turns repository files into LangChain `Document` objects and exposes retrievers backed by configurable vector stores.
-- `graph` builds the LangGraph workflow and owns state transitions.
-- `runtime` owns project/session/run state, run events, and checkpoint integration.
-- `api` and `cli` are delivery surfaces over runtime use cases.
+- `core`：配置、路径安全、共享类型、领域错误。
+- `models`：根据配置创建 LangChain chat model 和 embedding model。
+- `tools`：暴露 LangChain-compatible tools，并使用 Pydantic 参数 schema。
+- `rag`：把仓库文件转换为 LangChain `Document`，并暴露基于 vector store 的 retriever。
+- `graph`：构建 LangGraph workflow，管理状态转换和路由。
+- `runtime`：管理 project、session、run、run event，以及后续 checkpoint 接入。
+- `api` 和 `cli`：作为 runtime 的外部调用入口。
 
-### Model Layer
+## 模型层
 
-Replace direct calls in `src/llm/client.py` with factory functions that return LangChain chat model and embedding instances.
+用 LangChain model factory 替换 `src/llm/client.py` 中直接调用 SDK 的方式。
 
-The first implementation should support OpenAI-compatible providers already present in the project:
+第一版应支持当前已有的 OpenAI-compatible provider：
 
-- Aliyun DashScope compatible endpoint.
-- DeepSeek compatible endpoint.
-- Custom `base_url`, `api_key_env`, `model`, and optional temperature.
+- 阿里云 DashScope compatible endpoint。
+- DeepSeek compatible endpoint。
+- 自定义 `base_url`、`api_key_env`、`model`、`temperature`。
 
-The model layer should hide provider-specific construction. Graph nodes should depend on LangChain model interfaces, not on provider names.
+Graph node 不应直接依赖 provider 名称，也不应直接创建 OpenAI SDK client。它们只依赖 LangChain chat model 接口。
 
-### Tool Layer
+## 工具层
 
-Replace `TOOL_REGISTRY` with LangChain tools.
+用 LangChain tools 替换当前 `TOOL_REGISTRY`。
 
-Initial tools:
+初始工具包括：
 
-- `repo_summary`: summarize file count, file types, key directories, and entry candidates.
-- `read_file`: read a repository-relative file with path traversal protection.
-- `search_code`: keyword search over allowed source scopes.
-- `retrieve_code`: semantic retrieval through the configured retriever.
+- `repo_summary`：汇总文件数量、文件类型、关键目录、入口候选。
+- `read_file`：读取仓库内相对路径文件，并做路径逃逸保护。
+- `search_code`：在允许的代码范围内做关键词搜索。
+- `retrieve_code`：通过配置好的 retriever 做语义检索。
 
-Every tool must have:
+每个工具都必须具备：
 
-- A Pydantic args schema.
-- Repository root validation.
-- Clear output shape.
-- Tests for success, validation failure, and path safety where applicable.
+- Pydantic 参数 schema。
+- 仓库根目录校验。
+- 清晰稳定的结构化输出。
+- 成功路径、参数校验失败、路径安全失败等测试。
 
-Tool outputs should stay structured dictionaries so graph nodes can cite paths and line ranges reliably.
+工具输出应保持为结构化字典，便于 graph node 做路径引用、行号引用和 trace 记录。
 
-### RAG Layer
+## RAG 层
 
-Replace custom hash embeddings and global in-memory index with LangChain abstractions.
+用 LangChain 抽象替换当前自研 hash embedding 和全局内存索引。
 
-The default development backend should be local and easy to run:
+默认开发后端应保持本地可运行：
 
-- Use LangChain `Document` for code chunks.
-- Use a configurable embedding model.
-- Use a local VectorStore backend by default.
-- Keep a `VectorStoreFactory` abstraction so Qdrant, Milvus, or pgvector can be added without changing graph logic.
+- 使用 LangChain `Document` 表示代码块。
+- 使用可配置 embedding model。
+- 默认使用本地 VectorStore。
+- 保留 `VectorStoreFactory` 抽象，后续可替换为 Qdrant、Milvus 或 pgvector。
 
-The RAG layer should expose two main use cases:
+RAG 层对外提供两个主要用例：
 
-- `index_project(project_id, repo_path, indexing_config)`.
-- `get_retriever(project_id, retrieval_config)`.
+- `index_project(project_id, repo_path, indexing_config)`。
+- `get_retriever(project_id, retrieval_config)`。
 
-Document metadata must include:
+文档 metadata 必须包含：
 
 - `project_id`
 - `repo_path`
@@ -144,13 +152,13 @@ Document metadata must include:
 - `language`
 - `content_hash`
 
-This metadata is required for citation, filtering, reindexing, and future incremental indexing.
+这些字段用于回答引用、metadata filter、增量重建索引，以及未来接入生产向量库。
 
-### Graph Layer
+## Graph 层
 
-Rebuild the workflow as an explicit LangGraph graph.
+重建为显式 LangGraph workflow。
 
-Initial graph:
+初始 graph：
 
 ```text
 prepare_context
@@ -163,13 +171,13 @@ prepare_context
   -> finish
 ```
 
-Routing should be deterministic where possible:
+路由策略应尽量确定性：
 
-- If the question needs code context, retrieve first.
-- If retrieved context is insufficient, allow file/search tools.
-- If the graph reaches configured tool or retry limits, finish with a partial answer and explicit reason.
+- 如果问题需要代码上下文，优先检索。
+- 如果检索上下文不足，允许调用文件读取或关键词搜索工具。
+- 如果达到工具调用次数或 retry 上限，返回部分答案，并给出明确原因。
 
-State should use standard message objects where practical, plus project-specific fields:
+State 应尽量使用标准 message 对象，同时保留项目自己的字段：
 
 - `messages`
 - `project_id`
@@ -182,26 +190,26 @@ State should use standard message objects where practical, plus project-specific
 - `reason`
 - `events`
 
-The current custom `decision` JSON format should be removed. Tool calling should use LangChain/LangGraph-compatible tool semantics.
+当前自定义 `decision` JSON 协议应移除。工具调用应使用 LangChain/LangGraph 兼容的 tool calling 语义。
 
-### Runtime Layer
+## Runtime 层
 
-Move from a simple in-memory `SessionMemory` toward explicit project/session/run concepts.
+从简单的内存 `SessionMemory` 升级为 project/session/run 模型。
 
-Domain objects:
+核心领域对象：
 
-- `Project`: repository registration and index status.
-- `Session`: conversation context bound to a project.
-- `Run`: one user request through the graph.
-- `RunEvent`: trace event emitted by graph nodes, tools, retrievers, or model calls.
+- `Project`：仓库注册信息和索引状态。
+- `Session`：绑定某个 project 的对话上下文。
+- `Run`：用户一次提问对应的一次 graph 执行。
+- `RunEvent`：由 graph node、tool、retriever、model call 产生的 trace 事件。
 
-The first mature version may keep these in memory, but interfaces should make persistence replaceable. A later implementation can back them with SQLite or another store.
+第一版成熟架构可以继续使用内存存储，但接口要设计成可替换。后续可用 SQLite 或其他持久化存储接管。
 
-### API Surface
+## API 设计
 
-Because backward compatibility is not required, redesign the API around project, session, and run resources.
+由于本次不要求向后兼容，API 应围绕 project、session、run 重新设计。
 
-Initial endpoints:
+初始接口：
 
 ```text
 GET  /health
@@ -216,11 +224,13 @@ GET  /sessions/{session_id}/runs/{run_id}/events
 GET  /tools
 ```
 
-`/tools` should introspect the LangChain tool registry rather than a custom function map.
+`/tools` 应从 LangChain tool registry 做 introspection，而不是读取自定义函数 map。
 
-### CLI Surface
+## CLI 设计
 
-Replace mode-based educational CLI flags with workflow commands:
+移除教学阶段的 `--ask-mode basic/rag/agent/graph`，改成面向工作流的命令。
+
+示例：
 
 ```bash
 python -m src.cli index --repo E:\projects\codebase-agent
@@ -228,13 +238,13 @@ python -m src.cli ask --project codebase-agent "Where is the entry point?"
 python -m src.cli serve
 ```
 
-The CLI should call the same runtime services as the API.
+CLI 应调用与 API 相同的 runtime service，避免出现两套业务逻辑。
 
-## Error Handling
+## 错误处理
 
-Errors should be structured and mapped at the delivery boundary.
+错误应结构化，并在 API/CLI 边界映射为稳定输出。
 
-Core error categories:
+核心错误类型：
 
 - `ConfigurationError`
 - `ProviderError`
@@ -244,52 +254,53 @@ Core error categories:
 - `ToolExecutionError`
 - `GraphExecutionError`
 
-Graph nodes should record failures in run events. API handlers should convert domain errors to stable HTTP responses.
+Graph node 应把失败写入 run events。API handler 应把领域错误转换为稳定的 HTTP 响应。
 
-## Testing Strategy
+## 测试策略
 
-Testing should move from version-specific behavior to architecture boundaries:
+测试应从“版本功能测试”迁移到“架构边界测试”：
 
-- Unit tests for config loading and provider factories.
-- Unit tests for path safety and tools.
-- Unit tests for document loading and metadata.
-- Unit tests for vector store factory behavior using fake or in-memory embeddings.
-- Graph route tests using fake chat models and fake tools.
-- Runtime tests for project/session/run lifecycle.
-- API contract tests using dependency-injected fake runtime services.
+- 配置加载和 provider factory 单元测试。
+- 路径安全和工具单元测试。
+- 文档加载与 metadata 单元测试。
+- 使用 fake 或 in-memory embedding 的 vector store factory 测试。
+- 使用 fake chat model 和 fake tools 的 graph route 测试。
+- project/session/run 生命周期 runtime 测试。
+- 使用依赖注入 fake runtime service 的 API contract 测试。
 
-No tests should require real LLM API calls by default.
+默认测试不应依赖真实 LLM API。
 
-## Migration Strategy
+## 迁移策略
 
-The implementation should proceed in phases:
+建议分阶段实施：
 
-1. Add mature dependencies and configuration structures.
-2. Introduce new package boundaries without deleting old modules immediately.
-3. Build LangChain model and embedding factories.
-4. Convert tools to LangChain-compatible tools.
-5. Replace RAG internals with LangChain documents, retrievers, and vector stores.
-6. Rebuild the LangGraph workflow.
-7. Replace API and CLI surfaces.
-8. Remove obsolete modules and tests once equivalent mature paths are covered.
+1. 添加成熟化依赖和配置结构。
+2. 引入新的 package 边界，暂不立即删除旧模块。
+3. 构建 LangChain chat model 和 embedding factory。
+4. 将工具转换为 LangChain-compatible tools。
+5. 用 LangChain Document、Retriever、VectorStore 替换 RAG 内部实现。
+6. 重建 LangGraph workflow。
+7. 替换 API 和 CLI 表面。
+8. 在新路径测试覆盖完成后，删除过时模块和测试。
 
-This keeps the repository buildable while allowing intentional breaking changes at the API and CLI level.
+这样可以保证仓库在迁移过程中始终可运行，同时允许 API/CLI 做有意识的破坏性调整。
 
-## Non-Goals
+## 非目标
 
-The first mature architecture will not implement:
+第一版成熟架构不实现：
 
-- Multi-agent collaboration.
-- Background job queues.
-- Persistent production database.
-- Remote production vector stores by default.
-- LangSmith deployment.
-- Authentication or multi-tenant access control.
+- 多 Agent 协作。
+- 后台任务队列。
+- 生产级持久化数据库。
+- 默认远程生产向量库。
+- LangSmith deployment。
+- 认证和多租户权限控制。
 
-The design should leave extension points for these, but not build them yet.
+这些方向应保留扩展点，但不在第一轮重构中实现。
 
-## External References
+## 外部依据
 
-- LangChain standardizes model, tool, and agent harness concepts and its agents are built on LangGraph.
-- LangGraph is the low-level orchestration runtime for long-running, stateful agents, with support for persistence, streaming, human-in-the-loop, and observability.
-- LangChain VectorStore provides a unified interface such as `add_documents`, `delete`, and `similarity_search`, making it suitable for swapping local and production vector stores.
+- LangChain 提供标准模型接口、工具接口和 Agent harness，其 Agent 能力建立在 LangGraph 之上。
+- LangGraph 是面向长流程、有状态 Agent 的低层编排 runtime，重点能力包括持久化、streaming、human-in-the-loop 和 observability。
+- LangChain VectorStore 提供统一接口，例如 `add_documents`、`delete`、`similarity_search`，适合在本地向量库和生产向量库之间切换。
+
