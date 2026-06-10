@@ -81,7 +81,7 @@ class AgentRuntime:
             {
                 "question": question,
                 "repo_path": session.repo_path,
-                "messages": session.to_message_dicts(),
+                "messages": session.message_dicts,
             }
         )
         status = str(runner_result.get("status", "stopped"))

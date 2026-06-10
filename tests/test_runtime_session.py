@@ -12,8 +12,8 @@ class TestSession(unittest.TestCase):
             repo_path="E:\\projects\\codebase-agent",
         )
 
-        user_message = session.append_message("user", "入口在哪？")
-        assistant_message = session.append_message("assistant", "入口在 src/main.py。")
+        user_message = session.append_message("user", "Where is the entrypoint?")
+        assistant_message = session.append_message("assistant", "The entrypoint is src/main.py.")
 
         self.assertIsInstance(user_message, Message)
         self.assertIsInstance(assistant_message, Message)
@@ -42,25 +42,47 @@ class TestSession(unittest.TestCase):
         self.assertEqual(session.trace, [trace])
         self.assertEqual(trace.payload, {"status": "completed"})
 
-    def test_to_message_dicts_returns_plain_dict_snapshot(self) -> None:
+    def test_message_to_dict_returns_plain_dict_snapshot(self) -> None:
+        message = Message(role="user", content="Where is the entrypoint?")
+
+        message_dict = message.to_dict()
+        message_dict["content"] = "changed outside"
+
+        self.assertEqual(
+            message_dict,
+            {"role": "user", "content": "changed outside"},
+        )
+        self.assertEqual(message.content, "Where is the entrypoint?")
+
+    def test_trace_to_dict_returns_plain_dict_snapshot(self) -> None:
+        trace = Trace(payload={"status": "completed"})
+
+        trace_dict = trace.to_dict()
+        trace_dict["status"] = "failed"
+
+        self.assertEqual(trace_dict, {"status": "failed"})
+        self.assertEqual(trace.payload, {"status": "completed"})
+
+    def test_session_dict_properties_return_plain_snapshots(self) -> None:
         session = Session(
             session_id="session-1",
             repo_path="E:\\projects\\codebase-agent",
         )
-        session.append_message("user", "入口在哪？")
-        session.append_message("assistant", "入口在 src/main.py。")
+        session.append_message("user", "Where is the entrypoint?")
+        session.append_trace({"status": "completed"})
 
-        message_dicts = session.to_message_dicts()
-        message_dicts[0]["content"] = "被外部修改"
+        message_dicts = session.message_dicts
+        trace_dicts = session.trace_dicts
+        message_dicts[0]["content"] = "changed outside"
+        trace_dicts[0]["status"] = "failed"
 
         self.assertEqual(
             message_dicts,
-            [
-                {"role": "user", "content": "被外部修改"},
-                {"role": "assistant", "content": "入口在 src/main.py。"},
-            ],
+            [{"role": "user", "content": "changed outside"}],
         )
-        self.assertEqual(session.messages[0].content, "入口在哪？")
+        self.assertEqual(trace_dicts, [{"status": "failed"}])
+        self.assertEqual(session.messages[0].content, "Where is the entrypoint?")
+        self.assertEqual(session.trace[0].payload, {"status": "completed"})
 
 
 if __name__ == "__main__":

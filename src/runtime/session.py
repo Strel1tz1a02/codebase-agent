@@ -21,6 +21,12 @@ class Message:
     role: Literal["user", "assistant"]
     content: str
 
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "role": self.role,
+            "content": self.content,
+        }
+
 
 @dataclass
 class Trace:
@@ -36,6 +42,9 @@ class Trace:
     """
 
     payload: dict[str, object] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, object]:
+        return dict(self.payload)
 
 
 @dataclass
@@ -60,6 +69,14 @@ class Session:
     messages: list[Message] = field(default_factory=list)
     trace: list[Trace] = field(default_factory=list)
     status: Literal["running", "completed", "failed", "stopped"] = "running"
+
+    @property # property 装饰器把方法变成属性，调用时不需要加括号。
+    def message_dicts(self) -> list[dict[str, str]]:
+        return [message.to_dict() for message in self.messages]
+
+    @property
+    def trace_dicts(self) -> list[dict[str, object]]:
+        return [event.to_dict() for event in self.trace]
 
     def append_message(self, role: str, content: str) -> Message:
         """
@@ -99,22 +116,3 @@ class Session:
         event = Trace(payload=payload)
         self.trace.append(event)
         return event
-
-    def to_message_dicts(self) -> list[dict[str, str]]:
-        """
-        输入：
-            无。
-        输出：
-            list[dict[str, str]]：普通字典形式的消息快照。
-        作用：
-            将 Session 内部 Message 对象转换成 Agent runner 更通用的消息格式。
-        设计原因：
-            Runtime 不应该手写 Message 对象的转换细节；Session 更了解自己的消息结构。
-        """
-        return [
-            {
-                "role": message.role,
-                "content": message.content,
-            }
-            for message in self.messages
-        ]
