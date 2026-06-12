@@ -11,7 +11,7 @@ from src.agent.nodes import (
     route_after_tool,
 )
 from src.agent.state import AgentGraphState
-from src.agent.tools import TOOL_REGISTRY
+from src.tools.registry import TOOL_REGISTRY
 
 
 def build_agent_graph():

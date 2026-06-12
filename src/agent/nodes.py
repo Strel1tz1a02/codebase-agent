@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from src.agent.schemas import validate_decision_payload
 from src.agent.state import AgentGraphState
-from src.agent.tools import execute_tool
+from src.tools.registry import execute_tool
 
 
 def decide_next_action(state: AgentGraphState) -> AgentGraphState:

@@ -6,16 +6,12 @@ from src.agent.adapter import (
     parse_llm,
 )
 from src.agent.controller import run_agent_loop
-from src.agent.tools import (
-    TOOL_REGISTRY,
-    execute_tool,
-)
 from src.agent.schemas import (
     AgentContext,
     AgentDecision,
-    ToolResult,
     validate_decision_payload,
 )
+from src.tools.registry import TOOL_REGISTRY, ToolResult, execute_tool
 
 __all__ = [
     "AgentContext",

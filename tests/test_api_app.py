@@ -6,11 +6,11 @@ from unittest.mock import patch
 
 import httpx
 
-from src.agent.tools import TOOL_REGISTRY
 from src.agent.adapter import next_decision
 from src.api.app import create_app, create_default_runtime
 from src.runtime.memory import SessionMemory
 from src.runtime.runtime import AgentRuntime
+from src.tools.registry import TOOL_REGISTRY
 
 
 class TestApiApp(unittest.IsolatedAsyncioTestCase):

@@ -189,7 +189,7 @@ class TestAgentController(unittest.TestCase):
                 self.assertEqual(tool_result["output"]["matches"], fake_hits)
             return decisions.pop(0)
 
-        with patch("src.agent.tools.retrieve_relevant_chunks", return_value=fake_hits):
+        with patch("src.tools.codebase.retrieve_relevant_chunks", return_value=fake_hits):
             result = run_agent_loop(
                 "How is RAG exposed as a tool?",
                 repo_path,

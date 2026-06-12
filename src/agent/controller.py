@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from src.agent.tools import TOOL_REGISTRY, execute_tool
 from src.agent.schemas import AgentContext, validate_decision_payload
+from src.tools.registry import TOOL_REGISTRY, execute_tool
 
 
 def run_agent_loop(

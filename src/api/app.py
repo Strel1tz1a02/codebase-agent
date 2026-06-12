@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from src.agent.adapter import next_decision
-from src.agent.tools import TOOL_REGISTRY
 from src.api.schemas import (
     AskRequest,
     AskResponse,
@@ -16,6 +15,7 @@ from src.api.schemas import (
 from src.runtime.graph_runner import build_graph_agent_runner
 from src.runtime.runtime import AgentRuntime
 from src.runtime.session import Session
+from src.tools.registry import TOOL_REGISTRY
 
 
 def create_default_runtime() -> AgentRuntime:

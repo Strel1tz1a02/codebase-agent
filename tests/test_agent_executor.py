@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.agent.tools import TOOL_REGISTRY, execute_tool
+from src.tools.registry import TOOL_REGISTRY, execute_tool
 
 
 class TestAgentExecutor(unittest.TestCase):
@@ -141,7 +141,7 @@ class TestAgentExecutor(unittest.TestCase):
             }
         ]
 
-        with patch("src.agent.tools.retrieve_relevant_chunks", return_value=fake_hits) as mock_retrieve:
+        with patch("src.tools.codebase.retrieve_relevant_chunks", return_value=fake_hits) as mock_retrieve:
             result = execute_tool(
                 "retrieve_code",
                 {
