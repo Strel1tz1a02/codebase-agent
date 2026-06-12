@@ -6,7 +6,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from src.rag.retrieval import retrieve_relevant_chunks
-from src.tools.scanning import run_v1_scan, scan_files
+from src.tools.file_tools import run_v1_scan, scan_files
 
 
 SEARCHABLE_SUFFIXES = {".py", ".md", ".txt", ".json"}

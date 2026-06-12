@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.tools.scanning import (
+from src.tools.file_tools import (
     build_file_tree,
     count_file_types,
     find_entry_candidates,
