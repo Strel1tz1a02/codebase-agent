@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
+
+from src.core.paths import resolve_repo_path
 
 
 class ReadFileInput(BaseModel):
@@ -33,12 +33,9 @@ def _read_file(repo_path: str, path: str, max_chars: int = 8000) -> dict[str, ob
     if not relative_path:
         raise ValueError("path is required")
 
-    root = Path(repo_path).resolve()
-    target = (root / relative_path).resolve()
-    try:
-        normalized_relative_path = target.relative_to(root).as_posix()
-    except ValueError:
-        raise ValueError("path must stay inside repo") from None
+    target = resolve_repo_path(repo_path, relative_path)
+    root = resolve_repo_path(repo_path, ".")
+    normalized_relative_path = target.relative_to(root).as_posix()
 
     if not target.is_file():
         raise FileNotFoundError(f"file not found: {normalized_relative_path}")
