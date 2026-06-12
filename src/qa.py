@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from src.llm.client import ask_llm
 from src.prompts.templates import build_project_qa_prompt
-from src.tools.file_tools import read_context_files, select_context_files
+from src.tools.legacy_file_tools import read_context_files, select_context_files
 
 
 def answer_project_question(scan_result: dict[str, object], question: str) -> dict[str, object]:
