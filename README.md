@@ -16,12 +16,21 @@
 ## 1. 环境要求
 
 1. Python 3.11（推荐）
-2. 可用的网络环境（用于调用 LLM API）
+2. Conda 虚拟环境：`codebase-agent`
+3. 可用的网络环境（用于调用 LLM API）
 
 ## 2. 安装依赖
 
+先进入项目虚拟环境：
+
 ```bash
-pip install -r requirements.txt
+conda activate codebase-agent
+```
+
+如果本机沿用历史环境名 `CodeBaseAgent`，把上面的环境名替换为 `CodeBaseAgent`。
+
+```bash
+python -m pip install -r requirements.txt
 ```
 
 ## 3. 本地配置
