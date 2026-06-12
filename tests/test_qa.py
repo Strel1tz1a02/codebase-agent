@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.qa import answer_project_question
-from src.tools.file_tools import run_v1_scan
+from src.tools.scanning import run_v1_scan
 
 
 class TestQAFlow(unittest.TestCase):

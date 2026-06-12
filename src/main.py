@@ -18,7 +18,7 @@ from src.config import DEFAULT_CONFIG_PATH, get_llm_config, load_app_config, mer
 from src.qa import answer_project_question
 from src.rag import chunk_code_files, load_code_files
 from src.rag.retrieval import retrieve_relevant_chunks
-from src.tools.file_tools import generate_v1_report, run_v1_scan
+from src.tools.scanning import generate_v1_report, run_v1_scan
 
 
 def _format_history_arguments(arguments: dict[str, object]) -> str:
