@@ -19,4 +19,4 @@ class RuntimeStore:
         避免再维护平铺的 session、run、event 字典。
     """
 
-    projects: dict[str, Project] = field(default_factory=dict)
+    projects: dict[str, Project] = field(default_factory=dict)# field(default_factory=dict) 是 dataclass 中的一种用法，用于为字段提供一个默认的工厂函数。在这里，它为 projects 字段提供了一个默认的空字典。当创建 RuntimeStore 实例时，如果没有提供 projects 参数，它将自动初始化为一个空字典。这种方式比直接使用 projects: dict[str, Project] = {} 更安全，因为后者会在所有实例之间共享同一个字典，而 field(default_factory=dict) 则确保每个实例都有自己的独立字典。

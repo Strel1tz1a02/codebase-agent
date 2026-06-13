@@ -13,14 +13,15 @@ from src.runtime.sessions import RuntimeSession
 from src.runtime.store import RuntimeStore
 
 
-'''
-    Project -> RuntimeSession -> Run -> RunEvent
+"""
+Project -> RuntimeSession -> Run -> RunEvent
 
-    Project：一个已注册的代码仓库。
-    Session：围绕某个 Project 的一段对话。
-    Run：Session 中的一次用户提问，对应一次 LangGraph 执行。
-    Event：记录一次 Run 执行过程中的事件。
-'''
+Project：一个已注册的代码仓库。
+Session：围绕某个 Project 的一段对话。
+Run：Session 中的一次用户提问，对应一次 LangGraph 执行。
+Event：记录一次 Run 执行过程中的事件。
+"""
+
 
 @dataclass
 class Run:
@@ -32,6 +33,7 @@ class Run:
         status：run 当前状态。
         answer：graph 生成的最终回答。
         reason：失败或停止原因。
+        events：run 拥有的事件列表。
     输出：
         Run 数据对象。
     作用：
@@ -58,7 +60,8 @@ class RuntimeService:
     作用：
         在内存中管理 project、session、run 和 run event，并负责调用 graph。
     为什么需要这个类：
-        API 和 CLI 后续都应调用同一个 RuntimeService，避免各入口重复拼接 project/session/run 生命周期。
+        RuntimeService 只维护 graph 和 store；project/session/run 的读取必须沿所有权路径进行，
+        避免重新退回全局平铺索引或全局遍历查找。
     """
 
     def __init__(self, graph: object | None = None) -> None:
@@ -75,7 +78,7 @@ class RuntimeService:
         作用：
             注册一个可被分析的代码仓库。
         为什么需要这个函数：
-            session 和 run 都需要绑定 project；先注册 project 可以让后续 API/CLI 使用稳定 project_id。
+            session 和 run 都归属于 project；先注册 project 可以让后续流程使用稳定 project_id。
         """
         project = Project(
             project_id=uuid4().hex,
@@ -92,9 +95,9 @@ class RuntimeService:
         输出：
             Project：对应项目对象。
         作用：
-            从内存存储中读取已注册项目。
+            从 store 根入口读取已注册项目。
         为什么需要这个函数：
-            session 创建、graph 执行和后续 index 都需要根据 project_id 找到 repo_path。
+            project 是运行时对象所有权的根，后续 session/run 查询都应先明确 project。
         """
         self.validate_project_exists(project_id)
         return self.store.projects[project_id]
@@ -120,7 +123,7 @@ class RuntimeService:
         输出：
             RuntimeSession：新创建的会话对象。
         作用：
-            创建一个围绕指定 project 的对话容器。
+            创建一个归属于指定 project 的对话容器。
         为什么需要这个函数：
             用户后续每次提问都应落到某个 session 下，而不是直接散落成无上下文 run。
         """
@@ -132,40 +135,42 @@ class RuntimeService:
         project.sessions[session.session_id] = session
         return session
 
-    def get_session(self, session_id: str) -> RuntimeSession:
+    def get_session(self, project_id: str, session_id: str) -> RuntimeSession:
         """
         输入：
+            project_id：session 所属项目 ID。
             session_id：会话 ID。
         输出：
             RuntimeSession：对应会话对象。
         作用：
-            从内存存储中读取已创建 session。
+            从指定 project 的 sessions 中读取 session。
         为什么需要这个函数：
-            创建 run 和执行 graph 时都需要从 session 找回 project_id。
+            session 查询应显式指定归属 project，避免为了便利引入全局遍历查找。
         """
-        self.validate_session_exists(session_id)
-        session = self._find_session(session_id)
-        if session is None:
+        project = self.get_project(project_id)
+        session = project.sessions.get(session_id)
+        if not isinstance(session, RuntimeSession):
             raise KeyError(f"session not found: {session_id}")
         return session
 
-    def validate_session_exists(self, session_id: str) -> None:
+    def validate_session_exists(self, project_id: str, session_id: str) -> None:
         """
         输入：
+            project_id：session 所属项目 ID。
             session_id：会话 ID。
         输出：
             None；session 不存在时抛出 KeyError。
         作用：
-            明确校验 session_id 是否引用了已创建会话。
+            明确校验 session_id 是否存在于指定 project 下。
         为什么需要这个函数：
-            create_run 只是在创建前检查外键关系，不需要读取 session 对象；单独函数让语义更直接。
+            校验也应沿 project -> sessions 所有权路径完成，而不是只按全局 session_id 判断。
         """
-        if self._find_session(session_id) is None:
-            raise KeyError(f"session not found: {session_id}")
+        self.get_session(project_id, session_id)
 
-    def ask(self, session_id: str, question: str) -> Run:
+    def ask(self, project_id: str, session_id: str, question: str) -> Run:
         """
         输入：
+            project_id：session 所属项目 ID。
             session_id：用户本轮问题所属的会话 ID。
             question：用户本轮问题。
         输出：
@@ -173,71 +178,74 @@ class RuntimeService:
         作用：
             统一对外提供“提问并执行”的高层入口。
         为什么需要这个函数：
-            API/CLI 不应该重复拼接 create run 和 run graph 两步；它们只需要关心一次提问的最终 run 结果。
+            ask 拿到完整归属路径后，可以在内部直接定位 project/session/run，不需要全局查找辅助函数。
         """
-        run = self._create_run(session_id, question)
-        return self._run_graph(run.run_id)
+        project = self.get_project(project_id)
+        session = self.get_session(project_id, session_id)
+        run = self._create_run(session, question)
+        return self._run_graph(project, session, run)
 
-    def _create_run(self, session_id: str, question: str) -> Run:
+    def _create_run(self, session: RuntimeSession, question: str) -> Run:
         """
         输入：
-            session_id：run 所属会话 ID。
+            session：run 所属会话对象。
             question：用户本轮问题。
         输出：
             Run：新创建且状态为 queued 的 run。
         作用：
             为一次用户提问创建可追踪执行记录。
         为什么需要这个函数：
-            run 是 graph 执行的最小可查询单位，后续 API 可通过 run_id 查询状态和事件。
+            创建 run 时已经持有 owner session，直接写入 session.runs 可以保持所有权关系明确。
         """
-        session = self.get_session(session_id)
         run = Run(
             run_id=uuid4().hex,
-            session_id=session_id,
+            session_id=session.session_id,
             question=question,
         )
         session.runs[run.run_id] = run
         return run
 
-    def get_run(self, run_id: str) -> Run:
+    def get_run(self, session: RuntimeSession, run_id: str) -> Run:
         """
         输入：
+            session：run 所属会话对象。
             run_id：run ID。
         输出：
             Run：对应 run 对象。
         作用：
-            从内存存储中读取 run。
+            从指定 session 的 runs 中读取 run。
         为什么需要这个函数：
-            事件追加、graph 执行和 API 查询都需要统一读取 run。
+            run 查询必须指定 owner session，避免相同 run_id 或错误归属导致跨 session 读取。
         """
-        self.validate_run_exists(run_id)
-        run = self._find_run(run_id)
-        if run is None:
+        run = session.runs.get(run_id)
+        if not isinstance(run, Run):
             raise KeyError(f"run not found: {run_id}")
         return run
 
-    def validate_run_exists(self, run_id: str) -> None:
+    def validate_run_exists(self, session: RuntimeSession, run_id: str) -> None:
         """
         输入：
+            session：run 所属会话对象。
             run_id：run ID。
         输出：
             None；run 不存在时抛出 KeyError。
         作用：
-            明确校验 run_id 是否引用了已创建 run。
+            明确校验 run_id 是否存在于指定 session 下。
         为什么需要这个函数：
-            追加事件和查询事件只需要先确认 run 存在，单独函数比调用 get_run 更能表达校验意图。
+            校验也应沿 session -> runs 所有权路径完成，而不是全局扫所有 run。
         """
-        if self._find_run(run_id) is None:
-            raise KeyError(f"run not found: {run_id}")
+        self.get_run(session, run_id)
 
     def append_event(
         self,
+        session: RuntimeSession,
         run_id: str,
         event_type: str,
         payload: dict[str, object] | None = None,
     ) -> RunEvent:
         """
         输入：
+            session：事件所属 run 的 owner session。
             run_id：事件所属 run。
             event_type：事件类型。
             payload：事件详情。
@@ -246,9 +254,9 @@ class RuntimeService:
         作用：
             给某次 run 追加一条结构化事件。
         为什么需要这个函数：
-            事件写入规则应集中在 RuntimeService，避免 graph/API/CLI 各自维护不同事件格式。
+            事件写入也必须先指定 session 归属，避免只凭 run_id 跨 session 写入。
         """
-        run = self.get_run(run_id)
+        run = self.get_run(session, run_id)
         event = RunEvent(
             event_id=uuid4().hex,
             run_id=run_id,
@@ -258,37 +266,37 @@ class RuntimeService:
         run.events.append(event)
         return event
 
-    def list_run_events(self, run_id: str) -> list[RunEvent]:
+    def list_run_events(self, session: RuntimeSession, run_id: str) -> list[RunEvent]:
         """
         输入：
+            session：run 所属会话对象。
             run_id：run ID。
         输出：
             list[RunEvent]：该 run 的事件快照。
         作用：
             查询一次 run 的执行轨迹。
         为什么需要这个函数：
-            API 后续需要提供 run events 查询接口；这里先给出内存版读取能力。
+            事件读取应从指定 session 下的 run 开始，保持 project owns session owns run owns event 的模型。
         """
-        run = self.get_run(run_id)
+        run = self.get_run(session, run_id)
         return list(run.events)
 
-    def _run_graph(self, run_id: str) -> Run:
+    def _run_graph(self, project: Project, session: RuntimeSession, run: Run) -> Run:
         """
         输入：
-            run_id：要执行的 run ID。
+            project：run 所属 project。
+            session：run 所属 session。
+            run：要执行的 run。
         输出：
             Run：执行后更新状态和答案的 run。
         作用：
             把 run 转换成 graph state，调用 graph，并记录开始、内部和结束事件。
         为什么需要这个函数：
-            Runtime 是 session/run 生命周期和 LangGraph 执行之间的边界；集中在这里接入 graph，API/CLI 就不用关心 graph 细节。
+            graph 执行阶段已经持有完整 owner 链路，不需要再通过 ID 回查 project/session/run。
         """
-        run = self.get_run(run_id)
         run.status = "running"
-        self.append_event(run_id, "graph_start", {"run_id": run_id})
+        self.append_event(session, run.run_id, "graph_start", {"run_id": run.run_id})
 
-        session = self.get_session(run.session_id)
-        project = self.get_project(session.project_id)
         state = create_initial_state(
             project_id=project.project_id,
             repo_path=project.repo_path,
@@ -298,46 +306,10 @@ class RuntimeService:
 
         for event in result.get("events", []):
             if isinstance(event, dict):
-                self.append_event(run_id, "graph_event", event)
+                self.append_event(session, run.run_id, "graph_event", event)
 
         run.status = str(result.get("status", "completed"))  # type: ignore[assignment]
         run.answer = str(result.get("answer", ""))
         run.reason = str(result.get("reason", ""))
-        self.append_event(run_id, "graph_finish", {"status": run.status})
+        self.append_event(session, run.run_id, "graph_finish", {"status": run.status})
         return run
-
-    def _find_session(self, session_id: str) -> RuntimeSession | None:
-        """
-        输入：
-            session_id：会话 ID。
-        输出：
-            RuntimeSession 或 None。
-        作用：
-            从 project -> sessions 嵌套结构中按 ID 查找 session。
-        为什么需要这个函数：
-            当前阶段优先保持所有权结构清晰，不提前维护全局 session 索引；查找先用简单遍历实现。
-        """
-        for project in self.store.projects.values():
-            session = project.sessions.get(session_id)
-            if isinstance(session, RuntimeSession):
-                return session
-        return None
-
-    def _find_run(self, run_id: str) -> Run | None:
-        """
-        输入：
-            run_id：Run ID。
-        输出：
-            Run 或 None。
-        作用：
-            从 project -> sessions -> runs 嵌套结构中按 ID 查找 run。
-        为什么需要这个函数：
-            当前阶段不引入 runs_by_id 全局索引，让对象归属关系先由嵌套结构表达清楚。
-        """
-        for project in self.store.projects.values():
-            for session in project.sessions.values():
-                if isinstance(session, RuntimeSession):
-                    run = session.runs.get(run_id)
-                    if isinstance(run, Run):
-                        return run
-        return None
