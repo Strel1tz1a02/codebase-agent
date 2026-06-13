@@ -4,16 +4,14 @@ from pydantic import BaseModel
 
 
 class CreateSessionRequest(BaseModel):
-    repo_path: str | None = None
-    project_id: str | None = None
+    repo_path: str
 
 
 class CreateSessionResponse(BaseModel):
     session_id: str
-    repo_path: str = ""
-    project_id: str = ""
-    status: str = "running"
-    message_count: int = 0
+    repo_path: str
+    status: str
+    message_count: int
 
 
 class AskRequest(BaseModel):
@@ -43,39 +41,3 @@ class HealthResponse(BaseModel):
 
 class ToolListResponse(BaseModel):
     tools: list[str]
-
-
-class CreateProjectRequest(BaseModel):
-    name: str
-    repo_path: str
-
-
-class ProjectResponse(BaseModel):
-    project_id: str
-    name: str
-    repo_path: str
-    index_status: str
-
-
-class CreateRunRequest(BaseModel):
-    question: str
-
-
-class RunResponse(BaseModel):
-    run_id: str
-    session_id: str
-    question: str
-    status: str
-    answer: str = ""
-    reason: str = ""
-
-
-class RunEventResponse(BaseModel):
-    event_id: str
-    run_id: str
-    event_type: str
-    payload: dict[str, object]
-
-
-class RunEventListResponse(BaseModel):
-    events: list[RunEventResponse]

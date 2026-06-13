@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException
 
 from src.agent.adapter import next_decision
-from src.api.routes_projects import register_project_routes
-from src.api.routes_runs import register_run_routes
-from src.api.routes_sessions import runtime_session_to_response
 from src.api.schemas import (
     AskRequest,
     AskResponse,
@@ -16,7 +13,6 @@ from src.api.schemas import (
     ToolListResponse,
 )
 from src.runtime.graph_runner import build_graph_agent_runner
-from src.runtime.runs import RuntimeService
 from src.runtime.runtime import AgentRuntime
 from src.runtime.session import Session
 from src.tools.registry import TOOL_REGISTRY
@@ -76,10 +72,7 @@ def _session_to_response(session: Session) -> SessionResponse:
     )
 
 
-def create_app(
-    runtime: AgentRuntime | None = None,
-    project_runtime: RuntimeService | None = None,
-) -> FastAPI:
+def create_app(runtime: AgentRuntime | None = None) -> FastAPI:
     """
     输入：
         runtime：可选的 AgentRuntime；测试可以传入 fake 或隔离的 runtime。
@@ -92,9 +85,6 @@ def create_app(
     """
     app = FastAPI(title="codebase-agent API")
     app.state.runtime = runtime or create_default_runtime()
-    app.state.project_runtime = project_runtime or RuntimeService()
-    register_project_routes(app)
-    register_run_routes(app)
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -124,11 +114,8 @@ def create_app(
         """
         return ToolListResponse(tools=list(TOOL_REGISTRY.keys()))
 
-    @app.post("/sessions")
-    def create_session(
-        request: CreateSessionRequest,
-        response: Response,
-    ) -> dict[str, object] | CreateSessionResponse:
+    @app.post("/sessions", response_model=CreateSessionResponse)
+    def create_session(request: CreateSessionRequest) -> CreateSessionResponse:
         """
         输入：
             request：包含 repo_path 的创建会话请求。
@@ -139,17 +126,6 @@ def create_app(
         设计原因：
             HTTP 调用方需要先拿到 session_id，后续才能围绕同一仓库继续交互。
         """
-        if request.project_id:
-            try:
-                session = app.state.project_runtime.create_session(request.project_id)
-            except KeyError as exc:
-                raise _not_found_from_key_error(exc) from exc
-            response.status_code = 201
-            return runtime_session_to_response(session)
-
-        if not request.repo_path:
-            raise HTTPException(status_code=422, detail="repo_path or project_id is required")
-
         session = app.state.runtime.create_session(request.repo_path)
         return CreateSessionResponse(
             session_id=session.session_id,
@@ -158,8 +134,8 @@ def create_app(
             message_count=len(session.messages),
         )
 
-    @app.get("/sessions/{session_id}")
-    def get_session(session_id: str) -> SessionResponse | dict[str, object]:
+    @app.get("/sessions/{session_id}", response_model=SessionResponse)
+    def get_session(session_id: str) -> SessionResponse:
         """
         输入：
             session_id：要查询的会话 ID。
@@ -173,11 +149,7 @@ def create_app(
         try:
             session = app.state.runtime.memory.get_session(session_id)
         except KeyError as exc:
-            try:
-                runtime_session = app.state.project_runtime.get_session(session_id)
-            except KeyError:
-                raise _not_found_from_key_error(exc) from exc
-            return runtime_session_to_response(runtime_session)
+            raise _not_found_from_key_error(exc) from exc
         return _session_to_response(session)
 
     @app.post("/sessions/{session_id}/ask", response_model=AskResponse)
