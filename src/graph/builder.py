@@ -60,6 +60,7 @@ def build_graph():
             "retrieve_context": "retrieve_context",
             "plan_tool_use": "plan_tool_use",
             "synthesize_answer": "synthesize_answer",
+            "plan_next_step": "plan_next_step",
         },
     )
     graph.add_conditional_edges(
