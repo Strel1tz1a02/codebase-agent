@@ -32,10 +32,16 @@ def route_after_plan(state: AgentGraphState) -> str:
     """
     next_step = str(state.get("next_step", "answer"))
     if next_step == "retrieve":
+        if int(state.get("retrieval_round", 0)) >= int(state.get("max_retrieval_rounds", 2)):
+            return "synthesize_answer"
         return "retrieve_context"
     if next_step == "tool":
+        if int(state.get("tool_round", 0)) >= int(state.get("max_tool_rounds", 3)):
+            return "synthesize_answer"
         return "plan_tool_use"
-    return "synthesize_answer"
+    if next_step == "answer":
+        return "synthesize_answer"
+    return "plan_next_step"
 
 
 def route_after_retrieval(state: AgentGraphState) -> str:
