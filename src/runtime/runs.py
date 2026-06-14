@@ -133,11 +133,11 @@ class RuntimeService:
         project.index_status = "indexing"  # type: ignore[assignment]
         try:
             index = build_project_index(project.project_id, project.repo_path)
-            self.store.project_indexes[project.project_id] = index
+            project.index = index
             project.index_status = "indexed"  # type: ignore[assignment]
         except Exception:
             project.index_status = "failed"  # type: ignore[assignment]
-            self.store.project_indexes.pop(project.project_id, None)
+            project.index = None
             raise
         return project
 
@@ -152,8 +152,8 @@ class RuntimeService:
         为什么需要这个函数：
             ask 执行前需要确认项目已索引，测试和后续 API 也需要能稳定查询索引是否存在。
         """
-        self.validate_project_exists(project_id)
-        return self.store.project_indexes.get(project_id)
+        project = self.get_project(project_id)
+        return project.index
 
     def create_session(self, project_id: str) -> RuntimeSession:
         """

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+from src.rag.schemas import RagIndex
+
 
 @dataclass
 class Project:
@@ -24,4 +26,5 @@ class Project:
     name: str
     repo_path: str
     index_status: Literal["not_indexed", "indexing", "indexed", "failed"] = "not_indexed"
+    index: RagIndex | None = None
     sessions: dict[str, object] = field(default_factory=dict)
