@@ -1,262 +1,79 @@
 # codebase-agent
 
-面向代码仓库理解的 Agent 实验项目。
+`codebase-agent` 是面向代码仓库理解的本地 Agent 实验项目。当前主路径基于：
 
-当前实现状态：
+- CLI：`python -m src.cli`
+- API：`src.api.app:create_app`
+- Runtime：`RuntimeService`
+- Graph：LangGraph workflow
+- RAG：先索引，再基于已存在索引召回
 
-1. V1：项目结构扫描器
-2. V1.5：基于关键文件上下文的 LLM 项目问答
-3. V2：代码切块与 RAG 检索
-4. V3：最小 Agent 循环，支持 LLM 决策、工具执行和 history 记录
-5. V4：基于 LangGraph 的 Agent workflow，支持 `--ask-mode graph`
-6. V5：RAG 检索接入 Agent 工具层，新增 `retrieve_code`
-7. V6：新增 Agent Runtime 与 Session Memory，支持多轮消息、运行摘要和 LangGraph runner 适配
-8. V7：新增 FastAPI 服务层，支持 health、tools、sessions 和 ask HTTP 接口
+## 环境
 
-## 1. 环境要求
+项目当前使用 Conda 虚拟环境：
 
-1. Python 3.11（推荐）
-2. Conda 虚拟环境：`codebase-agent`
-3. 可用的网络环境（用于调用 LLM API）
-
-## 2. 安装依赖
-
-先进入项目虚拟环境：
-
-```bash
+```powershell
 conda activate codebase-agent
 ```
 
-如果本机沿用历史环境名 `CodeBaseAgent`，把上面的环境名替换为 `CodeBaseAgent`。
+本机历史环境名也可能是 `CodeBaseAgent`，如果 `codebase-agent` 不存在，可以使用：
 
-```bash
+```powershell
+conda activate CodeBaseAgent
+```
+
+安装依赖：
+
+```powershell
 python -m pip install -r requirements.txt
 ```
 
-## 3. 本地配置
+## CLI
 
-项目使用本地配置文件减少 CLI 参数。提交仓库的是配置模板，不提交真实配置。
-
-模板文件：
-
-```text
-.codebase_agent/config.example.json
-```
-
-真实配置文件：
-
-```text
-.codebase_agent/config.json
-```
-
-首次使用时复制模板：
+构建项目索引：
 
 ```powershell
-Copy-Item .codebase_agent\config.example.json .codebase_agent\config.json
+python -m src.cli index --repo E:\projects\codebase-agent --project codebase-agent
 ```
 
-真实 API Key 不写入配置文件，配置文件只保存环境变量名：
-
-```json
-{
-  "llm": {
-    "api_key_env": "CODEBASE_AGENT_API_KEY"
-  }
-}
-```
-
-PowerShell 临时设置 API Key：
+向已索引项目提问：
 
 ```powershell
-$env:CODEBASE_AGENT_API_KEY="你的真实 key"
+python -m src.cli ask --project codebase-agent "Where is the entry point?"
 ```
 
-长期保存：
+启动 API 服务：
 
 ```powershell
-setx CODEBASE_AGENT_API_KEY "你的真实 key"
+python -m src.cli serve
 ```
 
-`.codebase_agent/config.json` 已加入 `.gitignore`，不要提交真实配置。
+## API
 
-## 4. 常用命令
+启动服务后可访问：
 
-项目结构扫描：
-
-```bash
-python src/main.py
-```
-
-日常 Agent 问答（默认读取配置里的 `ask_mode`）：
-
-```bash
-python src/main.py --ask "入口在哪"
-```
-
-临时切换为基础问答：
-
-```bash
-python src/main.py --ask "入口在哪" --ask-mode basic
-```
-
-临时切换为 RAG 检索：
-
-```bash
-python src/main.py --ask "入口在哪" --ask-mode rag
-```
-
-临时切换为 LangGraph Agent：
-
-```bash
-python src/main.py --ask "Agent 工具执行流程是怎样的？" --ask-mode graph --max-steps 4
-```
-
-强制重建 RAG 索引：
-
-```bash
-python src/main.py --ask "入口在哪" --ask-mode rag --reindex
-```
-
-构建代码 chunks：
-
-```bash
-python src/main.py --build-chunks
-```
-
-临时覆盖仓库路径：
-
-```bash
-python src/main.py --repo E:\projects\other_repo --ask "入口在哪"
-```
-
-临时覆盖 LLM 配置：
-
-```bash
-python src/main.py --ask "入口在哪" --provider aliyun --model qwen-plus --base-url https://dashscope.aliyuncs.com/compatible-mode/v1
-```
-
-## 5. FastAPI 服务
-
-V7 把 `AgentRuntime` 暴露成 HTTP API。启动服务：
-
-```bash
-uvicorn src.api.app:app --reload
-```
-
-健康检查：
-
-```bash
+```powershell
 curl http://127.0.0.1:8000/health
 ```
 
-查看工具列表：
-
-```bash
-curl http://127.0.0.1:8000/tools
-```
-
-创建 session：
-
-```bash
-curl -X POST http://127.0.0.1:8000/sessions ^
-  -H "Content-Type: application/json" ^
-  -d "{\"repo_path\":\"E:\\projects\\codebase-agent\"}"
-```
-
-查看 session：
-
-```bash
-curl http://127.0.0.1:8000/sessions/<session_id>
-```
-
-向 session 提问：
-
-```bash
-curl -X POST http://127.0.0.1:8000/sessions/<session_id>/ask ^
-  -H "Content-Type: application/json" ^
-  -d "{\"question\":\"入口在哪？\"}"
-```
-
-说明：
-
-1. API 服务当前使用进程内 session memory，重启服务后 session 会丢失。
-2. 默认 app 会接入 LangGraph runner；真实问答仍依赖已有 LLM 配置。
-3. 测试中通过 `create_app(runtime=...)` 注入 fake runtime，避免真实 LLM 调用。
-
-## 6. 配置字段说明
-
-`.codebase_agent/config.example.json` 示例：
-
-```json
-{
-  "repo": "E:\\projects\\codebase-agent",
-  "ask_mode": "agent",
-  "llm": {
-    "provider": "aliyun",
-    "model": "qwen-plus",
-    "api_key_env": "CODEBASE_AGENT_API_KEY",
-    "base_url": ""
-  },
-  "rag": {
-    "top_k": 5,
-    "reindex": false
-  },
-  "agent": {
-    "max_steps": 3
-  }
-}
-```
-
-字段含义：
-
-1. `repo`：默认分析的本地代码仓库路径。
-2. `ask_mode`：问答模式，可选 `basic`、`rag`、`agent`、`graph`。
-3. `llm.provider`：LLM provider，目前支持 `aliyun`、`deepseek`。
-4. `llm.model`：模型名称，需要命中 provider 的注册模型。
-5. `llm.api_key_env`：保存真实 API Key 的环境变量名。
-6. `llm.base_url`：可选 API 地址；为空时使用 provider 默认地址。
-7. `rag.top_k`：RAG 模式返回的 chunk 数量。
-8. `rag.reindex`：是否默认重建 RAG 索引。
-9. `agent.max_steps`：Agent 循环最大步数。
-
-## 7. Agent 模式当前边界
-
-当前 Agent 模式已经跑通最小链路：
+核心对象模型：
 
 ```text
-AgentContext -> build_prompt -> ask_llm -> parse_llm -> run_agent_loop -> execute_tool -> history
+Project -> RuntimeSession -> Run -> RunEvent
 ```
 
-当前已有真实工具：
+API 路由只接入新的 `RuntimeService`，不再维护旧 runtime 和新 runtime 两套逻辑。
 
-1. `repo_summary`：查看仓库文件数、主要目录、文件类型统计和入口候选。
-2. `read_file`：读取仓库内指定文件内容，并限制路径不能逃出仓库。
-3. `search_code`：按关键词搜索代码文件，返回相对路径、行号和当前行文本；默认只搜索 `src/`，可通过 `scope` 搜索 `tests`、`docs` 或 `all`。
-4. `retrieve_code`：基于 RAG 索引做语义代码检索，返回相对路径、行号范围、内容和分数。Agent 使用该结果回答时应包含 `[relative_path:start_line-end_line]` 格式引用。
+## 配置说明
 
-V6 已新增 Runtime 层：
+默认测试不会调用真实 LLM。真实模型调用需要在模型配置中提供 `api_key_env`，并在本地环境变量中写入对应 API Key。
 
-1. `Session`：保存一次会话的 messages、trace 和 status。
-2. `SessionMemory`：在内存中创建和查找 session。
-3. `AgentRuntime`：把用户问题写入 session，调用 agent runner，并保存 assistant 回答。
-4. `build_graph_agent_runner()`：把 Runtime payload 适配到 LangGraph `run_agent_graph()`。
+默认向量存储是本地后端，适合开发和测试。生产级向量数据库接入属于后续扩展。
 
-当前 V6 暂不实现 retry policy；后续会在 V8 工具协议或 Runtime 增强阶段做更细粒度 retry。
-
-V7 已新增 API 服务层：
-
-1. `src/api/schemas.py`：定义 HTTP 请求和响应结构。
-2. `src/api/app.py`：创建 FastAPI app，把 HTTP 请求转交给 `AgentRuntime`。
-3. `GET /health`：服务健康检查。
-4. `GET /tools`：查看当前工具注册表。
-5. `POST /sessions`：创建绑定仓库路径的 session。
-6. `GET /sessions/{session_id}`：查看 session 状态、messages 和 trace。
-7. `POST /sessions/{session_id}/ask`：在指定 session 中提问。
-
-## 8. 测试
+## 测试
 
 运行全量测试：
 
-```bash
-python -m pytest
+```powershell
+python -m pytest -v
 ```

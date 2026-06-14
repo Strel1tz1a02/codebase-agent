@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>codebase-agent</title>
+    <link rel="stylesheet" href="/ui/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>codebase-agent</h1>
+          <p id="apiStatus">正在检查 API</p>
+        </div>
+        <div class="status-strip">
+          <span id="projectStatus">未选择项目</span>
+          <span id="indexStatus">not_indexed</span>
+        </div>
+      </header>
+
+      <section class="workspace" aria-label="代码库智能体工作台">
+        <aside class="sidebar" aria-label="项目">
+          <div class="panel-heading">
+            <h2>项目</h2>
+          </div>
+
+          <form id="projectForm" class="project-form">
+            <label>
+              项目名称
+              <input id="projectName" name="name" placeholder="codebase-agent" autocomplete="off" required />
+            </label>
+            <label>
+              仓库路径
+              <input id="repoPath" name="repo_path" placeholder="E:\projects\codebase-agent" autocomplete="off" required />
+            </label>
+            <button type="submit">创建</button>
+          </form>
+
+          <div id="projectList" class="project-list" aria-live="polite"></div>
+        </aside>
+
+        <section class="chat" aria-label="运行">
+          <div id="conversation" class="conversation" aria-live="polite">
+            <div class="empty-state">
+              <h2>选择或创建一个项目</h2>
+              <p>先为仓库建立索引，然后询问代码库问题。</p>
+            </div>
+          </div>
+
+          <form id="askForm" class="composer">
+            <input id="question" name="question" placeholder="询问这个代码库" autocomplete="off" required />
+            <button type="submit">提问</button>
+          </form>
+        </section>
+
+        <aside class="inspector" aria-label="检查器">
+          <div class="panel-heading">
+            <h2>检查器</h2>
+            <button id="indexButton" type="button">建立索引</button>
+          </div>
+          <dl class="details">
+            <dt>项目</dt>
+            <dd id="detailProject">-</dd>
+            <dt>项目 ID</dt>
+            <dd id="detailProjectId">-</dd>
+            <dt>仓库</dt>
+            <dd id="detailRepo">-</dd>
+            <dt>会话</dt>
+            <dd id="detailSession">-</dd>
+            <dt>运行</dt>
+            <dd id="detailRun">-</dd>
+          </dl>
+          <h3>运行事件</h3>
+          <div id="events" class="events"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/ui/static/app.js"></script>
+  </body>
+</html>

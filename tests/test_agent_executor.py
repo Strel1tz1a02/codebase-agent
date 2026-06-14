@@ -19,7 +19,7 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "repo_summary")
         self.assertEqual(result.error, "")
-        self.assertIn("src/main.py", result.output["entry_candidates"])
+        self.assertIn("src/cli/main.py", result.output["entry_candidates"])
 
     def test_repo_summary_returns_basic_repository_facts(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
@@ -33,21 +33,21 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertGreaterEqual(result.output["file_count"], 1)
         self.assertIn("src", result.output["key_dirs"])
         self.assertIn("tests", result.output["key_dirs"])
-        self.assertIn("src/main.py", result.output["entry_candidates"])
+        self.assertIn("src/cli/main.py", result.output["entry_candidates"])
 
     def test_read_file_returns_repository_file_content(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
 
         result = execute_tool(
             "read_file",
-            {"repo_path": repo_path, "path": "src/main.py", "max_chars": 20000},
+            {"repo_path": repo_path, "path": "src/cli/main.py", "max_chars": 20000},
         )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "read_file")
         self.assertEqual(result.error, "")
-        self.assertEqual(result.output["path"], "src/main.py")
-        self.assertIn("def main()", result.output["content"])
+        self.assertEqual(result.output["path"], "src/cli/main.py")
+        self.assertIn("def main(", result.output["content"])
         self.assertFalse(result.output["truncated"])
 
     def test_read_file_rejects_path_outside_repository(self) -> None:
@@ -62,12 +62,12 @@ class TestAgentExecutor(unittest.TestCase):
     def test_search_code_finds_keyword_with_path_line_and_text(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
 
-        result = execute_tool("search_code", {"repo_path": repo_path, "keyword": "run_agent_loop"})
+        result = execute_tool("search_code", {"repo_path": repo_path, "keyword": "RuntimeService"})
 
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "search_code")
         self.assertEqual(result.error, "")
-        self.assertEqual(result.output["keyword"], "run_agent_loop")
+        self.assertEqual(result.output["keyword"], "RuntimeService")
         self.assertEqual(result.output["scope"], "src")
         self.assertLessEqual(len(result.output["matches"]), 20)
         self.assertTrue(result.output["matches"])
@@ -76,8 +76,8 @@ class TestAgentExecutor(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                match["path"] == "src/agent/controller.py"
-                and match["text"] == "def run_agent_loop("
+                match["path"] == "src/runtime/runs.py"
+                and match["text"] == "class RuntimeService:"
                 and isinstance(match["line"], int)
                 for match in result.output["matches"]
             )
@@ -117,13 +117,13 @@ class TestAgentExecutor(unittest.TestCase):
 
         result = execute_tool(
             "search_code",
-            {"repo_path": repo_path, "keyword": "run_agent_loop", "scope": "all", "limit": 100},
+            {"repo_path": repo_path, "keyword": "RuntimeService", "scope": "all", "limit": 100},
         )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.output["scope"], "all")
         paths = [str(match["path"]) for match in result.output["matches"]]
-        self.assertIn("src/agent/controller.py", paths)
+        self.assertIn("src/runtime/runs.py", paths)
         self.assertTrue(any(path.startswith("tests/") for path in paths))
 
     def test_retrieve_code_is_registered(self) -> None:
@@ -133,10 +133,10 @@ class TestAgentExecutor(unittest.TestCase):
         repo_path = str(Path(__file__).resolve().parent.parent)
         fake_hits = [
             {
-                "relative_path": "src/agent/controller.py",
+                "relative_path": "src/runtime/runs.py",
                 "start_line": 9,
                 "end_line": 70,
-                "content": "def run_agent_loop(...):\n    pass\n",
+                "content": "class RuntimeService:\n    pass\n",
                 "score": 0.91,
             }
         ]

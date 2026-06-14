@@ -6,11 +6,13 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from src.rag.retrieval import retrieve_relevant_chunks
-from src.tools.legacy_file_tools import run_v1_scan, scan_files
+from src.utils.ignore import should_ignore_dir, should_ignore_file
 
 
 SEARCHABLE_SUFFIXES = {".py", ".md", ".txt", ".json"}
 SEARCH_SCOPES = {"src", "tests", "docs", "all"}
+ENTRY_CANDIDATE_NAMES = {"main.py", "app.py", "__main__.py", "manage.py", "run.py"}
+KEY_DIR_NAMES = {"src", "tests", "docs", "config", "scripts"}
 
 
 class RepoSummaryInput(BaseModel):
@@ -38,35 +40,126 @@ def _repo_summary(repo_path: str) -> dict[str, object]:
     输出：
         dict：项目文件数量、文件类型、关键目录和入口候选。
     作用：
-        把旧版 repo_summary 工具包装成 LangChain tool 可调用函数。
+        将 repo_summary 包装成 LangChain tool 可调用函数。
     设计原因：
         repo_summary 是 Agent 理解代码仓库的入口工具，先用确定性扫描保证结果稳定。
     """
     if not repo_path.strip():
         raise ValueError("repo_path is required")
 
-    scan_result = run_v1_scan(repo_path)
-    root = Path(str(scan_result["repo_path"]))
-
-    entry_candidates: list[str] = []
-    raw_entry_candidates = scan_result.get("entry_candidates", [])
-    if isinstance(raw_entry_candidates, list):
-        for item in raw_entry_candidates:
-            if not isinstance(item, str):
-                continue
-            entry_path = Path(item)
-            try:
-                entry_candidates.append(entry_path.resolve().relative_to(root).as_posix())
-            except ValueError:
-                entry_candidates.append(str(entry_path))
+    root = Path(repo_path).resolve()
+    kept_files = _scan_repo_files(root)
 
     return {
         "repo_path": str(root),
-        "file_count": int(scan_result.get("file_count", 0)),
-        "file_types": scan_result.get("file_types", {}),
-        "key_dirs": scan_result.get("key_dirs", []),
-        "entry_candidates": entry_candidates,
+        "file_count": len(kept_files),
+        "file_types": _count_file_types(kept_files),
+        "key_dirs": _summarize_key_dirs(kept_files, root),
+        "entry_candidates": _find_entry_candidates(kept_files, root),
     }
+
+
+def _scan_repo_files(root: Path) -> list[Path]:
+    """
+    输入：
+        root：已规范化的仓库根目录。
+    输出：
+        list[Path]：应该参与工具分析的文件路径。
+    作用：
+        扫描仓库并应用统一忽略规则。
+    设计原因：
+        repo_summary 和 search_code 需要同一套稳定文件边界，成熟入口不再依赖旧 V1 模块。
+    """
+    if not root.exists():
+        raise FileNotFoundError(f"path does not exist: {root}")
+    if not root.is_dir():
+        raise NotADirectoryError(f"path is not a directory: {root}")
+
+    kept_files: list[Path] = []
+    for current_root, dir_names, file_names in root.walk(top_down=True):
+        dir_names[:] = [dir_name for dir_name in dir_names if not should_ignore_dir(dir_name)]
+        for file_name in file_names:
+            file_path = current_root / file_name
+            if should_ignore_file(file_path):
+                continue
+            kept_files.append(file_path.resolve())
+
+    kept_files.sort(key=lambda path: path.as_posix().casefold())
+    return kept_files
+
+
+def _count_file_types(files: list[Path]) -> dict[str, int]:
+    """
+    输入：
+        files：已扫描的文件路径。
+    输出：
+        dict[str, int]：按后缀统计的文件数量。
+    作用：
+        给 repo_summary 返回简要的仓库文件类型分布。
+    设计原因：
+        工具输出需要稳定、结构化，便于 Graph 和 API 消费。
+    """
+    counts: dict[str, int] = {}
+    for file_path in files:
+        suffix = file_path.suffix.lower() or "[no_suffix]"
+        counts[suffix] = counts.get(suffix, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: item[0]))
+
+
+def _summarize_key_dirs(files: list[Path], root: Path) -> list[str]:
+    """
+    输入：
+        files：已扫描的文件路径。
+        root：仓库根目录。
+    输出：
+        list[str]：项目关键方向的顶层目录。
+    作用：
+        提供仓库结构的快速摘要。
+    设计原因：
+        repo_summary 是给 Agent 先看全局的确定性工具，不引入 LLM 不确定性。
+    """
+    key_dirs: set[str] = set()
+    for file_path in files:
+        try:
+            relative_path = file_path.relative_to(root)
+        except ValueError:
+            continue
+        if len(relative_path.parts) < 2:
+            continue
+        top_dir = relative_path.parts[0]
+        if top_dir.lower() in KEY_DIR_NAMES:
+            key_dirs.add(top_dir)
+    return sorted(key_dirs)
+
+
+def _find_entry_candidates(files: list[Path], root: Path) -> list[str]:
+    """
+    输入：
+        files：已扫描的文件路径。
+        root：仓库根目录。
+    输出：
+        list[str]：可能的运行入口相对路径。
+    作用：
+        基于常见文件名找到成熟入口候选。
+    设计原因：
+        这是 repo_summary 的确定性启发式信息，不应该绑定旧 CLI 文件。
+    """
+    src_candidates: list[str] = []
+    other_candidates: list[str] = []
+    for file_path in files:
+        if file_path.name not in ENTRY_CANDIDATE_NAMES:
+            continue
+        try:
+            relative_path_obj = file_path.relative_to(root)
+        except ValueError:
+            continue
+        relative_path = relative_path_obj.as_posix()
+        if "src" in {part.lower() for part in relative_path_obj.parts}:
+            src_candidates.append(relative_path)
+        else:
+            other_candidates.append(relative_path)
+
+    return sorted(src_candidates) + sorted(other_candidates)
 
 
 def _path_matches_search_scope(relative_path: str, scope: str) -> bool:
@@ -75,9 +168,9 @@ def _path_matches_search_scope(relative_path: str, scope: str) -> bool:
         relative_path：仓库内相对路径。
         scope：搜索范围。
     输出：
-        bool：路径是否属于该搜索范围。
+        bool：路径是否属于指定搜索范围。
     作用：
-        判断目录是否应该参与关键词搜索。
+        判断文件是否应该参与关键字搜索。
     设计原因：
         search_code 需要支持 src、tests、docs、all 几种常用范围。
     """
@@ -107,9 +200,9 @@ def _search_code(
     输出：
         dict：包含 keyword、scope 和 matches。
     作用：
-        把旧版 search_code 工具包装成 LangChain tool 可调用函数。
+        将 search_code 包装成 LangChain tool 可调用函数。
     设计原因：
-        让 Graph 后续可以通过统一工具接口执行关键词搜索。
+        让 Graph 可以通过统一工具接口执行关键字搜索。
     """
     repo_path = repo_path.strip()
     keyword = keyword.strip()
@@ -126,7 +219,7 @@ def _search_code(
     max_matches = max(0, limit)
     matches: list[dict[str, object]] = []
 
-    kept_files, _ignored_paths = scan_files(str(root))
+    kept_files = _scan_repo_files(root)
     for file_path in kept_files:
         path_obj = Path(file_path)
         if path_obj.suffix.lower() not in SEARCHABLE_SUFFIXES:
@@ -183,7 +276,7 @@ def _retrieve_code(
     输出：
         dict：包含 query、top_k 和 matches。
     作用：
-        把旧版 retrieve_code 工具包装成 LangChain tool 可调用函数。
+        将 retrieve_code 包装成 LangChain tool 可调用函数。
     设计原因：
         让后续 Agent 可以通过 tool calling 触发 RAG 检索。
     """

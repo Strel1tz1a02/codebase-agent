@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes_projects import register_project_routes
 from src.api.routes_runs import register_run_routes
@@ -42,6 +46,12 @@ def create_app(runtime: RuntimeService | None = None) -> FastAPI:
     register_project_routes(app)
     register_session_routes(app)
     register_run_routes(app)
+    ui_dir = Path(__file__).resolve().parents[1] / "ui" / "static"
+    app.mount("/ui/static", StaticFiles(directory=ui_dir), name="ui-static")
+
+    @app.get("/ui", include_in_schema=False)
+    def ui() -> FileResponse:
+        return FileResponse(ui_dir / "index.html")
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
