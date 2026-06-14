@@ -52,7 +52,7 @@ def _run_index(args: argparse.Namespace, runtime: RuntimeService) -> int:
     repo_path = str(args.repo)
     project_name = str(args.project or Path(repo_path).name)
     project = runtime.create_project(project_name, repo_path)
-    project.index_status = "indexed"  # type: ignore[assignment]
+    project = runtime.index_project(project.project_id)
     _print_json(
         {
             "project_id": project.project_id,

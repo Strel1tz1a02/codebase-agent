@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.graph.state import AgentGraphState
+from src.rag.retrieval import retrieve_from_index
 
 
 def prepare_context(state: AgentGraphState) -> AgentGraphState:
@@ -57,13 +58,16 @@ def retrieve_context(state: AgentGraphState) -> AgentGraphState:
     """
     next_state = dict(state)
     next_state["retrieval_round"] = int(state.get("retrieval_round", 0)) + 1
-    retriever = state.get("retriever")
-    if callable(retriever):
-        hits = retriever(
-            _latest_user_question(state),
-            str(state.get("repo_path", "")),
-            int(state.get("retrieval_top_k", 5)),
-        )
+    rag_index = state.get("rag_index")
+    if rag_index is not None:
+        hits = [
+            hit.to_dict() if hasattr(hit, "to_dict") else hit# hasattr:是否有这个属性或方法
+            for hit in retrieve_from_index(
+                rag_index,
+                _latest_user_question(state),
+                int(state.get("retrieval_top_k", 5)),
+            )
+        ]
     else:
         hits = []
 

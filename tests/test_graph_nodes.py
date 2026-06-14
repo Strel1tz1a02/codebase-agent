@@ -1,3 +1,4 @@
+import src.graph.nodes as graph_nodes
 from src.graph.nodes import (
     execute_tools,
     finish,
@@ -31,14 +32,25 @@ def test_plan_next_step_uses_fake_planner():
     assert result["events"][-1] == {"type": "next_step_planned", "next_step": "retrieve"}
 
 
-def test_retrieve_context_uses_fake_retriever():
+def test_retrieve_context_uses_rag_index(monkeypatch):
     state = create_initial_state("demo", "E:/repo", "Where is retrieval?")
     fake_hits = [{"relative_path": "src/rag/retrieval.py", "content": "retrieve"}]
-    state["retriever"] = lambda question, repo_path, top_k: fake_hits
+    fake_index = object()
+    calls = []
+
+    def fake_retrieve_from_index(rag_index, question, top_k):
+        calls.append({"rag_index": rag_index, "question": question, "top_k": top_k})
+        return fake_hits
+
+    monkeypatch.setattr(graph_nodes, "retrieve_from_index", fake_retrieve_from_index)
+    state["rag_index"] = fake_index
 
     result = retrieve_context(state)
 
     assert result["retrieval_hits"] == fake_hits
+    assert calls == [
+        {"rag_index": fake_index, "question": "Where is retrieval?", "top_k": 5}
+    ]
     assert result["events"][-1] == {"type": "context_retrieved", "hit_count": 1}
 
 

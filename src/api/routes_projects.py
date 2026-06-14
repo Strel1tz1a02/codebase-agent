@@ -33,8 +33,7 @@ def register_project_routes(app: FastAPI) -> None:
     @app.post("/projects/{project_id}/index", response_model=ProjectResponse)
     def index_project(project_id: str) -> ProjectResponse:
         try:
-            project = app.state.runtime.get_project(project_id)
+            project = app.state.runtime.index_project(project_id)
         except ProjectNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        project.index_status = "indexed"  # type: ignore[assignment]
         return project_to_response(project)

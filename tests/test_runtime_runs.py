@@ -1,6 +1,12 @@
 import pytest
 
+from src.core.errors import RagIndexNotReadyError
 from src.runtime.runs import RuntimeService
+
+
+def _write_repo_file(tmp_path):
+    repo_file = tmp_path / "app.py"
+    repo_file.write_text("def entrypoint():\n    return 'ok'\n", encoding="utf-8")
 
 
 def test_runtime_ask_creates_run_for_session(tmp_path):
@@ -8,8 +14,10 @@ def test_runtime_ask_creates_run_for_session(tmp_path):
         def invoke(self, state):
             return {"status": "completed", "answer": "", "events": []}
 
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
 
     run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
@@ -27,8 +35,10 @@ def test_runtime_records_run_events(tmp_path):
         def invoke(self, state):
             return {"status": "completed", "answer": "", "events": []}
 
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
     run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
 
@@ -46,8 +56,10 @@ def test_runtime_validates_session_and_run_exist(tmp_path):
         def invoke(self, state):
             return {"status": "completed", "answer": "", "events": []}
 
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
     run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
 
@@ -72,8 +84,10 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
                 "events": [{"type": "answer_synthesized"}],
             }
 
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
 
     completed = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
@@ -85,6 +99,8 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
     assert graph_calls[0]["messages"] == [
         {"role": "user", "content": "Where is the entry point?"}
     ]
+    assert graph_calls[0]["rag_index"] is runtime.get_project_index(project.project_id)
+    assert "retriever" not in graph_calls[0]
     assert [event.event_type for event in runtime.list_run_events(session, completed.run_id)] == [
         "graph_start",
         "graph_event",
@@ -92,14 +108,25 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
     ]
 
 
+def test_runtime_ask_requires_indexed_project(tmp_path):
+    runtime = RuntimeService()
+    project = runtime.create_project("demo", str(tmp_path))
+    session = runtime.create_session(project.project_id)
+
+    with pytest.raises(RagIndexNotReadyError):
+        runtime.ask(project.project_id, session.session_id, "Where is entrypoint?")
+
+
 def test_runtime_get_methods_require_owner_scope(tmp_path):
     class FakeGraph:
         def invoke(self, state):
             return {"status": "completed", "answer": "", "events": []}
 
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
     other_project = runtime.create_project("other", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
     run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
 

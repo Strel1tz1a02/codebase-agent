@@ -30,7 +30,7 @@ class AgentGraphState(TypedDict, total=False):
     events: list[dict[str, object]]
     retrieval_top_k: int
     step_planner: object
-    retriever: object
+    rag_index: object
     tool_planner: object
     tool_executor: object
     chat_model: object

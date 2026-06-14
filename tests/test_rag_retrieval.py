@@ -1,6 +1,29 @@
 from pathlib import Path
 
 import src.rag.retrieval as retrieval
+from src.rag.indexing import build_project_index
+from src.rag.retrieval import retrieve_from_index
+from src.rag.schemas import RagHit
+
+
+def test_retrieve_from_index_returns_hits_without_rebuilding(tmp_path, monkeypatch):
+    repo_file = tmp_path / "app.py"
+    repo_file.write_text("def entrypoint():\n    return 'ok'\n", encoding="utf-8")
+    index = build_project_index("demo", str(tmp_path))
+
+    def fail_if_rebuilding_index(*_args, **_kwargs):
+        raise AssertionError("retrieval should only consume an existing RagIndex")
+
+    monkeypatch.setattr(retrieval, "load_code_files", fail_if_rebuilding_index, raising=False)
+    monkeypatch.setattr(retrieval, "chunk_code_files", fail_if_rebuilding_index, raising=False)
+    monkeypatch.setattr(retrieval, "build_embeddings", fail_if_rebuilding_index, raising=False)
+    monkeypatch.setattr(retrieval, "build_local_vector_store", fail_if_rebuilding_index, raising=False)
+
+    hits = retrieve_from_index(index, "entrypoint", top_k=1)
+
+    assert len(hits) == 1
+    assert isinstance(hits[0], RagHit)
+    assert hits[0].relative_path == "app.py"
 
 
 def test_retrieve_relevant_chunks_uses_new_langchain_rag_pipeline(tmp_path, monkeypatch):

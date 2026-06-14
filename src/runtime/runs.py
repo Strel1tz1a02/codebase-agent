@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from typing import Literal
 from uuid import uuid4
 
-from src.core.errors import ProjectNotFoundError
+from src.core.errors import ProjectNotFoundError, RagIndexNotReadyError
 from src.graph.builder import build_graph
 from src.graph.state import create_initial_state
+from src.rag.indexing import build_project_index
+from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
 from src.runtime.projects import Project
 from src.runtime.sessions import RuntimeSession
@@ -115,6 +117,43 @@ class RuntimeService:
         """
         if project_id not in self.store.projects:
             raise ProjectNotFoundError(f"project not found: {project_id}")
+
+    def index_project(self, project_id: str) -> Project:
+        """
+        输入：
+            project_id：要构建 RAG 索引的项目 ID。
+        输出：
+            Project：索引状态更新后的项目对象。
+        作用：
+            调用 RAG indexing 层构建项目级 RagIndex，并保存到 RuntimeStore。
+        为什么需要这个函数：
+            Runtime 是项目级索引对象的持有者；API 和 CLI 都应调用同一个入口，避免各自构建不同的 RAG 链路。
+        """
+        project = self.get_project(project_id)
+        project.index_status = "indexing"  # type: ignore[assignment]
+        try:
+            index = build_project_index(project.project_id, project.repo_path)
+            self.store.project_indexes[project.project_id] = index
+            project.index_status = "indexed"  # type: ignore[assignment]
+        except Exception:
+            project.index_status = "failed"  # type: ignore[assignment]
+            self.store.project_indexes.pop(project.project_id, None)
+            raise
+        return project
+
+    def get_project_index(self, project_id: str) -> RagIndex | None:
+        """
+        输入：
+            project_id：项目 ID。
+        输出：
+            RagIndex 或 None：项目级 RAG 索引对象。
+        作用：
+            读取 RuntimeStore 中已构建的项目级 RagIndex。
+        为什么需要这个函数：
+            ask 执行前需要确认项目已索引，测试和后续 API 也需要能稳定查询索引是否存在。
+        """
+        self.validate_project_exists(project_id)
+        return self.store.project_indexes.get(project_id)
 
     def create_session(self, project_id: str) -> RuntimeSession:
         """
@@ -294,6 +333,10 @@ class RuntimeService:
         为什么需要这个函数：
             graph 执行阶段已经持有完整 owner 链路，不需要再通过 ID 回查 project/session/run。
         """
+        index = self.get_project_index(project.project_id)
+        if index is None:
+            raise RagIndexNotReadyError(f"rag index not ready: {project.project_id}")
+
         run.status = "running"
         self.append_event(session, run.run_id, "graph_start", {"run_id": run.run_id})
 
@@ -302,6 +345,7 @@ class RuntimeService:
             repo_path=project.repo_path,
             question=run.question,
         )
+        state["rag_index"] = index
         result = self.graph.invoke(state)  # type: ignore[attr-defined]
 
         for event in result.get("events", []):

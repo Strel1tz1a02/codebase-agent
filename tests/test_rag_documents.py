@@ -7,7 +7,7 @@ def test_rag_package_exports_new_standard_rag_components():
     assert rag.build_document is build_document
     assert hasattr(rag, "build_local_vector_store")
     assert hasattr(rag, "build_retriever")
-    assert hasattr(rag, "index_documents")
+    assert not hasattr(rag, "index_documents")
     assert not hasattr(rag, "embed_chunks")
     assert not hasattr(rag, "build_index")
     assert not hasattr(rag, "search_index")

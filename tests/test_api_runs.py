@@ -13,9 +13,16 @@ class FakeGraph:
         }
 
 
+def _write_repo_file(tmp_path):
+    repo_file = tmp_path / "app.py"
+    repo_file.write_text("def entrypoint():\n    return 'ok'\n", encoding="utf-8")
+
+
 def test_create_session_and_run_endpoints(tmp_path):
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     app = create_app(runtime=runtime)
     client = TestClient(app)
 
@@ -36,8 +43,10 @@ def test_create_session_and_run_endpoints(tmp_path):
 
 
 def test_get_run_and_events_endpoints(tmp_path):
+    _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())
     project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
     run = runtime.ask(project.project_id, session.session_id, "Where is main?")
     app = create_app(runtime=runtime)
