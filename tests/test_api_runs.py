@@ -42,6 +42,29 @@ def test_create_session_and_run_endpoints(tmp_path):
     assert run_response.json()["answer"] == f"answer for {project.project_id}"
 
 
+def test_create_run_returns_json_error_for_graph_failure(tmp_path):
+    class FailingGraph:
+        def invoke(self, state):
+            raise RuntimeError("llm api failed")
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FailingGraph())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    app = create_app(runtime=runtime)
+    client = TestClient(app)
+    session_response = client.post(f"/projects/{project.project_id}/sessions")
+    session_id = session_response.json()["session_id"]
+
+    response = client.post(
+        f"/projects/{project.project_id}/sessions/{session_id}/runs",
+        json={"question": "Where is main?"},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "llm api failed"}
+
+
 def test_get_run_and_events_endpoints(tmp_path):
     _write_repo_file(tmp_path)
     runtime = RuntimeService(graph=FakeGraph())

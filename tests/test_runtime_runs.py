@@ -1,6 +1,8 @@
 import pytest
 
+from src.core.config import AppConfig, ModelConfig
 from src.core.errors import RagIndexNotReadyError
+import src.runtime.runs as runtime_runs
 from src.runtime.runs import RuntimeService
 
 
@@ -106,6 +108,44 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
         "graph_event",
         "graph_finish",
     ]
+
+
+def test_runtime_injects_chat_model_into_graph_state(tmp_path):
+    graph_calls = []
+    chat_model = object()
+
+    class FakeGraph:
+        def invoke(self, state):
+            graph_calls.append(state)
+            return {"status": "completed", "answer": "ok", "events": []}
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=chat_model)
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+
+    runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
+
+    assert graph_calls[0]["chat_model"] is chat_model
+
+
+def test_runtime_builds_chat_model_when_api_key_env_exists(monkeypatch):
+    built_configs = []
+    fake_model = object()
+
+    def fake_build_chat_model(config):
+        built_configs.append(config)
+        return fake_model
+
+    monkeypatch.setenv("TEST_LLM_KEY", "secret")
+    monkeypatch.setattr(runtime_runs, "build_chat_model", fake_build_chat_model)
+    config = AppConfig(model=ModelConfig(api_key_env="TEST_LLM_KEY"))
+
+    runtime = RuntimeService(graph=object(), config=config)
+
+    assert runtime.chat_model is fake_model
+    assert built_configs == [config.model]
 
 
 def test_runtime_ask_requires_indexed_project(tmp_path):

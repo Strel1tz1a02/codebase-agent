@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from src.api.schemas import CreateRunRequest, RunEventListResponse, RunEventResponse, RunResponse
 from src.runtime.events import RunEvent
@@ -42,6 +42,8 @@ def register_run_routes(app: FastAPI) -> None:
             run = app.state.runtime.ask(project_id, session_id, request.question)
         except KeyError as exc:
             raise app.state.not_found_from_key_error(exc) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         return run_to_response(run)
 
     @app.get(

@@ -5,20 +5,6 @@ from langgraph.graph import END
 from src.graph.state import AgentGraphState
 
 
-def route_after_prepare(state: AgentGraphState) -> str:
-    """
-    输入:
-        state: prepare_context 执行后的 AgentGraphState。
-    输出:
-        str: 下一步节点名称，固定为 plan_next_step。
-    作用:
-        把上下文准备节点连接到统一规划节点。
-    为什么需要这个函数?
-        阶段 4 要显式拆出 routing；即使当前是固定路径，也保持和其它 conditional edge 一致。
-    """
-    return "plan_next_step"
-
-
 def route_after_plan(state: AgentGraphState) -> str:
     """
     输入:

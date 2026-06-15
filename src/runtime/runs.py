@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Literal
 from uuid import uuid4
 
+from src.core.config import AppConfig
 from src.core.errors import ProjectNotFoundError, RagIndexNotReadyError
 from src.graph.builder import build_graph
 from src.graph.state import create_initial_state
+from src.models.chat import build_chat_model
 from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
@@ -66,9 +69,32 @@ class RuntimeService:
         避免重新退回全局平铺索引或全局遍历查找。
     """
 
-    def __init__(self, graph: object | None = None) -> None:
+    def __init__(
+        self,
+        graph: object | None = None,
+        config: AppConfig | None = None,
+        chat_model: object | None = None,
+    ) -> None:
         self.graph = graph or build_graph()
+        self.config = config or AppConfig()
+        self.chat_model = chat_model or self._build_chat_model_if_configured()
         self.store = RuntimeStore()
+
+    def _build_chat_model_if_configured(self) -> object | None:
+        """
+        输入：
+            无，读取 self.config.model。
+        输出：
+            object 或 None：已创建的 LangChain chat model；未配置 API key 时返回 None。
+        作用：
+            让 API/GUI 在设置环境变量后可以自动走真实模型，同时保持测试和离线开发不依赖真实 API。
+        为什么需要这个函数：
+            build_chat_model 会在 API key 缺失时抛 ConfigurationError；Runtime 默认构造不能因为缺少 key 而失败。
+        """
+        api_key = os.getenv(self.config.model.api_key_env, "").strip()
+        if not api_key:
+            return None
+        return build_chat_model(self.config.model)
 
     def create_project(self, name: str, repo_path: str) -> Project:
         """
@@ -346,6 +372,8 @@ class RuntimeService:
             question=run.question,
         )
         state["rag_index"] = index
+        if self.chat_model is not None:
+            state["chat_model"] = self.chat_model
         result = self.graph.invoke(state)  # type: ignore[attr-defined]
 
         for event in result.get("events", []):

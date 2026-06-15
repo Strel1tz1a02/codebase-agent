@@ -13,9 +13,12 @@ def test_create_initial_state_sets_project_and_question():
     assert state["messages"] == [
         {"role": "user", "content": "Where is the entry point?"}
     ]
-    assert state["retrieval_hits"] == []
+    assert "context" not in state
     assert state["tool_calls"] == []
-    assert state["tool_results"] == []
+    assert state["retrieval_round"] == 0
+    assert state["tool_round"] == 0
+    assert state["max_retrieval_rounds"] == 2
+    assert state["max_tool_rounds"] == 3
     assert state["answer"] == ""
     assert state["status"] == "running"
     assert state["reason"] == ""
