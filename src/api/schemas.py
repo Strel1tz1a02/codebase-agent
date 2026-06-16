@@ -21,7 +21,6 @@ class ProjectResponse(BaseModel):
 
 class CreateSessionResponse(BaseModel):
     session_id: str
-    project_id: str
     status: str = "running"
 
 
@@ -31,7 +30,6 @@ class CreateRunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     run_id: str
-    session_id: str
     question: str
     status: str
     answer: str = ""
@@ -40,7 +38,6 @@ class RunResponse(BaseModel):
 
 class RunEventResponse(BaseModel):
     event_id: str
-    run_id: str
     event_type: str
     payload: dict[str, object]
 

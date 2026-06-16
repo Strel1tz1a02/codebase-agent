@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
-from src.core.config import EmbeddingConfig
+from src.core.config import AppConfig
 from src.core.errors import ConfigurationError
 
 
@@ -54,10 +54,10 @@ class LocalHashEmbeddings:
         return values
 
 
-def build_embeddings(config: EmbeddingConfig) -> LocalHashEmbeddings:
+def build_embeddings(config: AppConfig) -> LocalHashEmbeddings:
     """
     输入：
-        config：EmbeddingConfig，包含 provider 和 model。
+        config：AppConfig，包含 embedding 配置。
     输出：
         LocalHashEmbeddings：本地 embedding 实现。
     作用：
@@ -65,8 +65,9 @@ def build_embeddings(config: EmbeddingConfig) -> LocalHashEmbeddings:
     设计原因：
         后续可以在这里扩展 OpenAI、阿里云或 HuggingFace embedding，而不用改 RAG 代码。
     """
-    if config.provider != "local":
-        raise ConfigurationError(f"unsupported embedding provider: {config.provider}")
-    if config.model != "local-hash":
-        raise ConfigurationError(f"unsupported local embedding model: {config.model}")
+    embedding_config = config.embeddings_config
+    if embedding_config.provider != "local":
+        raise ConfigurationError(f"unsupported embedding provider: {embedding_config.provider}")
+    if embedding_config.model != "local-hash":
+        raise ConfigurationError(f"unsupported local embedding model: {embedding_config.model}")
     return LocalHashEmbeddings()

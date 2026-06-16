@@ -59,7 +59,7 @@ def build_project_index(
         )
         for chunk in chunks
     ]
-    vector_store = build_local_vector_store(build_embeddings(app_config.embeddings))
+    vector_store = build_local_vector_store(build_embeddings(app_config))
     if documents:
         _index_documents(vector_store, documents)
 

@@ -35,6 +35,7 @@ class AgentGraphState(TypedDict, total=False):
     events: list[dict[str, object]]
 
     rag_index: object
+    tools: object
     tool_executor: object
     chat_model: object
 
@@ -43,6 +44,8 @@ def create_initial_state(
     project_id: str,
     repo_path: str,
     question: str,
+    rag_index: object,
+    chat_model: object,
 ) -> AgentGraphState:
     """
     输入:
@@ -56,17 +59,22 @@ def create_initial_state(
     为什么需要这个函数?
         graph 入口需要稳定完整的 state；集中初始化可以避免 runtime 或测试手写字段时遗漏默认值。
     """
-    return {
-        "project_id": project_id,
-        "repo_path": repo_path,
-        "messages": [{"role": "user", "content": question}],
-        "tool_calls": [],
-        "retrieval_round": 0,
-        "tool_round": 0,
-        "max_retrieval_rounds": 2,
-        "max_tool_rounds": 3,
-        "answer": "",
-        "status": "running",
-        "reason": "",
-        "events": [],
-    }
+    state = AgentGraphState(
+        project_id=project_id,
+        repo_path=repo_path,
+        messages=[{"role": "user", "content": question}],
+
+        retrieval_round=0,
+        tool_round=0,
+        max_retrieval_rounds=2,
+        max_tool_rounds=3,
+        retrieval_top_k=5,
+
+        answer="",
+        status="running",
+        reason="",
+        events=[],
+        rag_index=rag_index,
+        chat_model=chat_model,
+    )
+    return state

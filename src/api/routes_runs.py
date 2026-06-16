@@ -10,7 +10,6 @@ from src.runtime.runs import Run
 def run_to_response(run: Run) -> RunResponse:
     return RunResponse(
         run_id=run.run_id,
-        session_id=run.session_id,
         question=run.question,
         status=run.status,
         answer=run.answer,
@@ -21,7 +20,6 @@ def run_to_response(run: Run) -> RunResponse:
 def event_to_response(event: RunEvent) -> RunEventResponse:
     return RunEventResponse(
         event_id=event.event_id,
-        run_id=event.run_id,
         event_type=event.event_type,
         payload=event.payload,
     )
@@ -52,8 +50,8 @@ def register_run_routes(app: FastAPI) -> None:
     )
     def get_run(project_id: str, session_id: str, run_id: str) -> RunResponse:
         try:
-            session = app.state.runtime.get_session(project_id, session_id)
-            run = app.state.runtime.get_run(session, run_id)
+            session = app.state.runtime.store.get_project(project_id).get_session(session_id)
+            run = session.get_run(run_id)
         except KeyError as exc:
             raise app.state.not_found_from_key_error(exc) from exc
         return run_to_response(run)

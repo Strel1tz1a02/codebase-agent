@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.runtime.projects import Project
-
+from src.core.errors import ProjectNotFoundError
 
 @dataclass
 class RuntimeStore:
@@ -20,3 +20,12 @@ class RuntimeStore:
     """
 
     projects: dict[str, Project] = field(default_factory=dict)
+
+    def add_project(self, project: Project) -> None:
+        self.projects[project.project_id] = project
+
+    def get_project(self, project_id: str) -> Project:
+        if project_id not in self.projects:
+            raise ProjectNotFoundError(f"project not found: {project_id}")
+        return self.projects[project_id]
+    

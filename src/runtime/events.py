@@ -20,7 +20,6 @@ class RunEvent:
     """
 
     event_id: str
-    run_id: str
     event_type: str
     payload: dict[str, object] = field(default_factory=dict)
 

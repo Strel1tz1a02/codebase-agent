@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
+from uuid import uuid4
 
 from src.rag.schemas import RagIndex
-
+from src.core.errors import SessionNotFoundError
+from src.runtime.sessions import RuntimeSession
 
 @dataclass
 class Project:
@@ -27,4 +29,14 @@ class Project:
     repo_path: str
     index_status: Literal["not_indexed", "indexing", "indexed", "failed"] = "not_indexed"
     index: RagIndex | None = None
-    sessions: dict[str, object] = field(default_factory=dict)
+    sessions: dict[str, RuntimeSession] = field(default_factory=dict)
+
+    def add_session(self, session: RuntimeSession) -> None:
+        self.sessions[session.session_id] = session
+
+    def get_session(self, session_id: str) -> RuntimeSession:
+        if session_id not in self.sessions:
+            raise SessionNotFoundError(f"session not found: {session_id}")
+        return self.sessions[session_id]
+
+

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
+from src.core.errors import RunNotFoundError
+from src.runtime.runs import Run
 
 @dataclass
 class RuntimeSession:
@@ -18,5 +19,12 @@ class RuntimeSession:
     """
 
     session_id: str
-    project_id: str
-    runs: dict[str, object] = field(default_factory=dict)
+    runs: dict[str, Run] = field(default_factory=dict)
+
+    def add_run(self, run: Run) -> None:
+        self.runs[run.run_id] = run
+
+    def get_run(self, run_id: str) -> Run:
+        if run_id not in self.runs:
+            raise RunNotFoundError(f"run not found: {run_id}")
+        return self.runs[run_id]

@@ -147,7 +147,7 @@ class AppConfig:
         后续 API、CLI、Runtime 可以只传递 AppConfig，而不是到处传多个零散配置对象。
     """
 
-    model: ModelConfig = field(default_factory=ModelConfig)
-    embeddings: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    model_config: ModelConfig = field(default_factory=ModelConfig)
+    embeddings_config: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
-    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    retrieval_config: RetrievalConfig = field(default_factory=RetrievalConfig)

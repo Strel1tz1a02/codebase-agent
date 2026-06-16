@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from uuid import uuid4
 
 from src.api.schemas import CreateProjectRequest, ProjectResponse
 from src.core.errors import ProjectNotFoundError
@@ -19,13 +20,13 @@ def project_to_response(project: Project) -> ProjectResponse:
 def register_project_routes(app: FastAPI) -> None:
     @app.post("/projects", response_model=ProjectResponse, status_code=201)
     def create_project(request: CreateProjectRequest) -> ProjectResponse:
-        project = app.state.runtime.create_project(request.name, request.repo_path)
+        project = Project(project_id=uuid4().hex, name=request.name, repo_path=request.repo_path)
         return project_to_response(project)
 
     @app.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> ProjectResponse:
         try:
-            project = app.state.runtime.get_project(project_id)
+            project = app.state.runtime.store.get_project(project_id)
         except ProjectNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return project_to_response(project)
