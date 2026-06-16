@@ -13,6 +13,11 @@ class ProviderError(CodebaseAgentError):
 class ProjectNotFoundError(CodebaseAgentError):
     """Raised when a requested project does not exist."""
 
+class SessionNotFoundError(CodebaseAgentError):
+    """Raised when a requested session does not exist."""
+
+class RunNotFoundError(CodebaseAgentError):
+    """Raised when a requested run does not exist."""
 
 class RagIndexNotReadyError(CodebaseAgentError):
     """Raised when the RAG index is required but not built or loaded."""
