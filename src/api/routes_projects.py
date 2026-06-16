@@ -21,6 +21,7 @@ def register_project_routes(app: FastAPI) -> None:
     @app.post("/projects", response_model=ProjectResponse, status_code=201)
     def create_project(request: CreateProjectRequest) -> ProjectResponse:
         project = Project(project_id=uuid4().hex, name=request.name, repo_path=request.repo_path)
+        app.state.runtime.store.add_project(project)
         return project_to_response(project)
 
     @app.get("/projects/{project_id}", response_model=ProjectResponse)

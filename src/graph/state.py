@@ -46,6 +46,7 @@ def create_initial_state(
     question: str,
     rag_index: object,
     chat_model: object,
+    tool_executor:callable
 ) -> AgentGraphState:
     """
     输入:
@@ -76,5 +77,6 @@ def create_initial_state(
         events=[],
         rag_index=rag_index,
         chat_model=chat_model,
+        tool_executor=tool_executor
     )
     return state

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from src.runtime.projects import Project
 from src.core.errors import ProjectNotFoundError
+
+if TYPE_CHECKING:
+    from src.runtime.projects import Project
 
 @dataclass
 class RuntimeStore:

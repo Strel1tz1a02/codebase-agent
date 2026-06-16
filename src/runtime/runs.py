@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 from typing import Literal
 from uuid import uuid4
 
@@ -12,9 +13,11 @@ from src.models.chat import build_chat_model
 from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
-from src.runtime.projects import Project
 from src.runtime.store import RuntimeStore
+from src.tools.registry import execute_tool
 
+if TYPE_CHECKING:
+    from src.runtime.projects import Project
 
 """
 Project -> RuntimeSession -> Run -> RunEvent
@@ -77,10 +80,12 @@ class RuntimeService:
         graph: object | None = None,
         config: AppConfig | None = None,
         chat_model: object | None = None,
+        tool_executor:callable | None = None,
     ) -> None:
         self.graph = graph or build_graph()
         self.config = config or AppConfig()
         self.chat_model = chat_model or build_chat_model(self.config)
+        self.tool_executor = tool_executor or execute_tool
         self.store = RuntimeStore()
 
 
@@ -140,7 +145,6 @@ class RuntimeService:
         session.add_run(run)
         return run
 
-
     def _run_graph(self, project: Project, question: str) -> Run:
         """
         输入：
@@ -171,6 +175,7 @@ class RuntimeService:
             question=run.question,
             rag_index=index,
             chat_model=self.chat_model,
+            tool_executor=self.tool_executor,
         )
         result = self.graph.invoke(state)# result 是新的state
 

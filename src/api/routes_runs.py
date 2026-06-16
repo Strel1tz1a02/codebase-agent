@@ -66,8 +66,9 @@ def register_run_routes(app: FastAPI) -> None:
         run_id: str,
     ) -> RunEventListResponse:
         try:
-            session = app.state.runtime.get_session(project_id, session_id)
-            events = app.state.runtime.list_run_events(session, run_id)
+            session = app.state.runtime.store.get_project(project_id).get_session(session_id)
+            run = session.get_run(run_id)
+            events = run.list_events()
         except KeyError as exc:
             raise app.state.not_found_from_key_error(exc) from exc
         return RunEventListResponse(events=[event_to_response(event) for event in events])

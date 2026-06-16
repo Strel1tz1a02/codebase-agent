@@ -6,6 +6,7 @@ from langchain_core.messages import ToolMessage
 
 from src.graph.state import AgentGraphState
 from src.rag.retrieval import retrieve_from_index
+from src.tools.registry import ToolResult
 
 
 def plan_next_step(state: AgentGraphState) -> AgentGraphState:
@@ -108,32 +109,47 @@ def execute_tools(state: AgentGraphState) -> AgentGraphState:
         也方便后续做权限、错误处理和事件追踪。
     """
     executor = state.get("tool_executor")
-    results = []
     messages = []
-    for index, tool_call in enumerate(state.get("tool_calls", []), start=1):
-        if callable(executor):
-            result = executor(tool_call, state)
-        else:
-            result = {
-                "name": tool_call.get("name", ""),
-                "ok": False,
-                "error": "No tool executor configured.",
-            }
-        results.append(result)
-        messages.append(
-            ToolMessage(
-                content=str(result),
-                name=str(tool_call.get("name", "")),
-                tool_call_id=f"{tool_call.get('name', 'tool')}:{index}",
+    if callable(executor):
+        for index, tool_call in enumerate(state.get("tool_calls", []), start=1):
+            try:
+                result = executor(
+                    tool_call["name"], tool_call.get("arguments", {})
+                )
+            except Exception as e:
+                result = ToolResult(
+                    ok=False,
+                    tool_name=tool_call.get("name", ""),
+                    error=str(e),
+                )
+            messages.append(
+                ToolMessage(
+                    content=str(result),
+                    name=str(tool_call.get("name", "")),
+                    tool_call_id=f"{tool_call.get('name', 'tool')}:{index}",
+                )
             )
-        )
+    else:
+        for index, tool_call in enumerate(state.get("tool_calls", []), start=1):
+            result = ToolResult(
+                ok=False,
+                tool_name=tool_call.get("name", ""),
+                error="No tool executor configured.",
+            )
+            messages.append(
+                ToolMessage(
+                    content=str(result),
+                    name=str(tool_call.get("name", "")),
+                    tool_call_id=f"{tool_call.get('name', 'tool')}:{index}",
+                )
+            )
     return _append_event(
         {
             "tool_round": int(state.get("tool_round", 0)) + 1,
             "messages": messages,
         },
         state,
-        {"type": "tools_executed", "result_count": len(results)},
+        {"type": "tools_executed", "result_count": len(messages)},
     )
 
 
@@ -331,8 +347,15 @@ def _build_tool_planning_prompt(state: AgentGraphState) -> str:
     return (
         "你是 codebase-agent 的工具规划节点。\n"
         "可用工具：repo_summary、read_file、search_code、retrieve_code。\n"
+        "所有工具都需要 repo_path 参数（值为当前仓库路径）。\n"
+        "参数说明：\n"
+        "- repo_summary: repo_path\n"
+        '- read_file: repo_path, path（必填，相对路径）, max_chars（可选）\n'
+        '- search_code: repo_path, keyword（必填）, scope（可选）, limit（可选）\n'
+        '- retrieve_code: repo_path, query（必填）, top_k（可选）\n'
         "只返回 JSON 数组，不要返回解释。数组元素格式："
         '{"name":"工具名","arguments":{...}}。如果不需要工具，返回 []。\n\n'
+        f"当前仓库路径：{state.get('repo_path', '')}\n\n"
         f"用户问题：{_latest_user_question(state)}\n\n"
         f"已有 observation：\n{_format_observation_messages(state)}\n"
     )
