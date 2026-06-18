@@ -6,14 +6,12 @@ from src.graph.nodes import (
     execute_tools,
     finish,
     plan_next_step,
-    retrieve_context,
     synthesize_answer,
     validate_answer,
 )
 from src.graph.routing import (
     route_after_finish,
     route_after_plan,
-    route_after_retrieval,
     route_after_synthesis,
     route_after_tool_execution,
     route_after_validation,
@@ -28,12 +26,11 @@ def build_graph():
     输出:
         编译后的 LangGraph graph 对象，支持 invoke(state)。
     作用:
-        把 plan、retrieve、execute_tools、answer、validate、finish 节点组装成显式 workflow。
+        把 plan、execute_tools、answer、validate、finish 节点组装成显式 workflow。
         规划节点合并了工具决策和工具规划，一次 LLM 调用产出 next_step + tool_calls。
     """
     graph = StateGraph(AgentGraphState)
     graph.add_node("plan_next_step", plan_next_step)
-    graph.add_node("retrieve_context", retrieve_context)
     graph.add_node("execute_tools", execute_tools)
     graph.add_node("synthesize_answer", synthesize_answer)
     graph.add_node("validate_answer", validate_answer)
@@ -44,16 +41,10 @@ def build_graph():
         "plan_next_step",
         route_after_plan,
         {
-            "retrieve_context": "retrieve_context",
             "execute_tools": "execute_tools",
             "synthesize_answer": "synthesize_answer",
             "plan_next_step": "plan_next_step",
         },
-    )
-    graph.add_conditional_edges(
-        "retrieve_context",
-        route_after_retrieval,
-        {"plan_next_step": "plan_next_step"},
     )
     graph.add_conditional_edges(
         "execute_tools",

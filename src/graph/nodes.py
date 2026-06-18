@@ -7,10 +7,8 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from src.graph.prompts import (
     build_answer_prompt,
     build_step_planning_prompt,
-    latest_user_question,
 )
 from src.graph.state import AgentGraphState
-from src.rag.retrieval import retrieve_from_index
 from src.tools.toolkit import ToolResult
 
 
@@ -50,43 +48,6 @@ def plan_next_step(state: AgentGraphState) -> AgentGraphState:
         update,
         state,
         {"type": "next_step_planned", "next_step": str(next_step)},
-    )
-
-
-def retrieve_context(state: AgentGraphState) -> AgentGraphState:
-    """
-    输入:
-        state: 当前 AgentGraphState，可选包含 retriever。
-    输出:
-        追加检索 observation message 并记录 retrieval_round 后的 AgentGraphState update。
-    作用:
-        根据用户问题和仓库路径获取相关代码片段，供回答生成或工具规划使用。
-    为什么需要这个函数?
-        RAG 检索应作为独立节点存在，召回数量等检索策略应由 retriever 自己决定，graph 只负责编排。
-    """
-    retrieval_round = int(state.get("retrieval_round", 0)) + 1
-    rag_index = state.get("rag_index")
-    if rag_index is not None:
-        hits = [
-            hit.to_dict() if hasattr(hit, "to_dict") else hit
-            for hit in retrieve_from_index(
-                rag_index,
-                latest_user_question(state),
-                int(state.get("retrieval_top_k", 5)),
-            )
-        ]
-    else:
-        hits = []
-
-    retrieval_message = ToolMessage(
-        content=_format_retrieval_hits(list(hits)),
-        name="retrieve_context",
-        tool_call_id=f"retrieve_context:{retrieval_round}",
-    )
-    return _append_event(
-        {"retrieval_round": retrieval_round, "messages": [retrieval_message]},
-        state,
-        {"type": "context_retrieved", "hit_count": len(hits)},
     )
 
 
@@ -227,10 +188,8 @@ def _extract_model_content(response: object) -> str:
 
 
 def _normalize_next_step(raw_step: str) -> str:
-    """从 LLM 文本输出中提取下一步：retrieve / answer。工具调用由 JSON 解析提前处理。"""
+    """从 LLM 文本输出中提取下一步：只接受 answer，工具调用由 JSON 解析提前处理。"""
     normalized = raw_step.strip().lower()
-    if "retrieve" in normalized or "检索" in normalized:
-        return "retrieve"
     if "answer" in normalized or "回答" in normalized:
         return "answer"
     return "invalid"
@@ -256,21 +215,6 @@ def _parse_tool_calls(raw_json: str) -> list[dict[str, object]]:
             arguments = {}
         tool_calls.append({"name": name, "arguments": arguments})
     return tool_calls
-
-
-def _format_retrieval_hits(hits: object) -> str:
-    if not isinstance(hits, list) or not hits:
-        return "无"
-    lines = []
-    for index, hit in enumerate(hits, start=1):
-        if not isinstance(hit, dict):
-            continue
-        relative_path = str(hit.get("relative_path", ""))
-        start_line = int(hit.get("start_line", 0) or 0)
-        end_line = int(hit.get("end_line", 0) or 0)
-        content = str(hit.get("content", ""))
-        lines.append(f"{index}. {relative_path}:{start_line}-{end_line}\n{content}")
-    return "\n\n".join(lines) if lines else "无"
 
 
 def _append_event(

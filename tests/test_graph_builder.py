@@ -1,4 +1,3 @@
-import src.graph.nodes as graph_nodes
 from src.graph.builder import build_graph
 from src.graph.state import create_initial_state
 
@@ -37,51 +36,57 @@ def test_build_graph_returns_completed_answer():
     assert result["answer"] == "Graph execution completed."
 
 
-def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(monkeypatch):
+def test_build_graph_runs_retrieve_code_tool_and_answer_flow():
+    """验证 graph 通过 retrieve_code 工具完成语义检索和回答流程。"""
     graph = build_graph()
+    tool_calls = []
+
+    def fake_tool_executor(name, args):
+        """记录工具调用，并返回一个包含 RAG 命中文件的工具结果。"""
+        tool_calls.append((name, args))
+        return {
+            "name": name,
+            "ok": True,
+            "output": {
+                "matches": [
+                    {
+                        "relative_path": "src/rag/retrieval.py",
+                        "content": "retrieval implementation",
+                    }
+                ]
+            },
+        }
+
     state = _make_state(
         "Where is retrieval?",
         chat_model=SequencedInvokeModel(
             [
-                "retrieve",
-                '[{"name": "inspect_hit", "arguments": {"path": "src/rag/retrieval.py"}}]',
+                '[{"name": "retrieve_code", "arguments": {"repo_path": "E:/repo", "query": "Where is retrieval?", "top_k": 1}}]',
                 "answer",
                 "retrieval is in src/rag/retrieval.py",
             ]
         ),
         rag_index=object(),
-        tool_executor=lambda name, args: {
-            "name": name,
-            "ok": True,
-            "output": "inspected",
-        },
-    )
-    monkeypatch.setattr(
-        graph_nodes,
-        "retrieve_from_index",
-        lambda rag_index, question, top_k: [
-            {"relative_path": "src/rag/retrieval.py", "content": question}
-        ],
+        tool_executor=fake_tool_executor,
     )
 
     result = graph.invoke(state)
 
     assert result["status"] == "completed"
     assert "context" not in result
+    assert tool_calls == [
+        (
+            "retrieve_code",
+            {"repo_path": "E:/repo", "query": "Where is retrieval?", "top_k": 1},
+        )
+    ]
     assert any(
-        getattr(message, "name", "") == "retrieve_context"
+        getattr(message, "name", "") == "retrieve_code"
         and "src/rag/retrieval.py" in getattr(message, "content", "")
-        for message in result["messages"]
-    )
-    assert any(
-        getattr(message, "name", "") == "inspect_hit"
-        and "inspected" in getattr(message, "content", "")
         for message in result["messages"]
     )
     assert result["answer"] == "retrieval is in src/rag/retrieval.py"
     assert [event["type"] for event in result["events"]] == [
-        "next_step_planned",
-        "context_retrieved",
         "next_step_planned",
         "tools_executed",
         "next_step_planned",
@@ -91,35 +96,36 @@ def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(m
     ]
 
 
-def test_build_graph_can_retrieve_again_before_answering(monkeypatch):
+def test_build_graph_can_call_retrieve_code_again_before_answering():
+    """验证 graph 可多轮调用 retrieve_code 工具，再进入最终回答。"""
     graph = build_graph()
+    tool_calls = []
+
+    def fake_tool_executor(name, args):
+        """记录 retrieve_code 工具调用顺序，并返回空命中结果。"""
+        tool_calls.append((name, args))
+        return {"name": name, "ok": True, "output": {"matches": []}}
+
     state = _make_state(
         "Where is config?",
         chat_model=SequencedInvokeModel(
-            ["retrieve", "retrieve", "answer", "answered after 2 retrievals"]
+            [
+                '[{"name": "retrieve_code", "arguments": {"repo_path": "E:/repo", "query": "config", "top_k": 1}}]',
+                '[{"name": "retrieve_code", "arguments": {"repo_path": "E:/repo", "query": "config fallback", "top_k": 1}}]',
+                "answer",
+                "answered after 2 retrievals",
+            ]
         ),
         rag_index=object(),
+        tool_executor=fake_tool_executor,
     )
-    retrieval_calls = []
-
-    def fake_retrieve_from_index(rag_index, question, top_k):
-        retrieval_calls.append((rag_index, question, top_k))
-        return [
-            {
-                "relative_path": f"src/config_{len(retrieval_calls)}.py",
-                "content": question,
-            }
-        ]
-
-    monkeypatch.setattr(graph_nodes, "retrieve_from_index", fake_retrieve_from_index)
 
     result = graph.invoke(state)
 
     assert result["status"] == "completed"
-    assert result["retrieval_round"] == 1
-    assert len(retrieval_calls) == 1
-    assert retrieval_calls[0][0] is state["rag_index"]
-    assert result["answer"] == "answer"
+    assert result["tool_round"] == 2
+    assert [name for name, _ in tool_calls] == ["retrieve_code", "retrieve_code"]
+    assert result["answer"] == "answered after 2 retrievals"
 
 
 def test_build_graph_retries_once_after_unknown_next_step():

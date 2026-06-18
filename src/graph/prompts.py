@@ -43,11 +43,6 @@ def _tool_messages(state: AgentGraphState) -> list[object]:
     ]
 
 
-def _count_tool_messages(state: AgentGraphState, name: str) -> int:
-    """统计指定 name 的 tool message 数量，用于 prompt 中告知 LLM 已有多少轮结果。"""
-    return sum(1 for message in _tool_messages(state) if _message_name(message) == name)
-
-
 def latest_invalid_plan_output(state: AgentGraphState) -> str:
     """从 messages 中倒序找到最近一次无效规划输出，用于下一轮规划 prompt 纠偏。"""
     for message in reversed(state.get("messages", [])):
@@ -56,17 +51,12 @@ def latest_invalid_plan_output(state: AgentGraphState) -> str:
     return ""
 
 
-def _calc_remaining_rounds(state: AgentGraphState) -> tuple[int, int]:
-    """计算剩余检索次数和剩余工具调用次数。"""
-    remaining_retrieval = max(
-        0,
-        int(state.get("max_retrieval_rounds", 2)) - int(state.get("retrieval_round", 0)),
-    )
-    remaining_tool = max(
+def _calc_remaining_tool_rounds(state: AgentGraphState) -> int:
+    """计算剩余工具调用次数。"""
+    return max(
         0,
         int(state.get("max_tool_rounds", 3)) - int(state.get("tool_round", 0)),
     )
-    return remaining_retrieval, remaining_tool
 
 
 def format_tool_results(state: AgentGraphState) -> str:
@@ -78,10 +68,9 @@ def format_tool_results(state: AgentGraphState) -> str:
     return "\n\n".join(lines) if lines else "无"
 
 def build_step_planning_prompt(state: AgentGraphState) -> str:
-    """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定 retrieve / 工具JSON / answer。"""
-    remaining_retrieval, remaining_tool = _calc_remaining_rounds(state)
+    """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定工具 JSON 或 answer。"""
+    remaining_tool = _calc_remaining_tool_rounds(state)
     invalid_plan_round = int(state.get("invalid_plan_round", 0))
-    has_retrieval = _count_tool_messages(state, "retrieve_context") > 0
     has_tool_results = len(_tool_messages(state)) > 0
     tool_results_text = format_tool_results(state)
     repo_path = str(state.get("repo_path", ""))
@@ -89,10 +78,9 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
     lines = [
         "你是 codebase-agent 的流程规划节点。",
         "",
-        "只能输出以下三种之一：",
-        "1. retrieve                     —— 语义检索兜底，仅当工具调用(search_code/read_file)无法定位时使用",
-        "2. [{\"name\":\"...\",\"arguments\":...}] —— JSON数组，指定要调用的工具",
-        "3. answer                       —— 信息足够，准备生成回答",
+        "只能输出以下两种之一：",
+        "1. [{\"name\":\"...\",\"arguments\":...}] —— JSON数组，指定要调用的工具",
+        "2. answer                       —— 信息足够，准备生成回答",
         "",
         "决策规则：",
     ]
@@ -102,27 +90,25 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
         if last_invalid_plan_output:
             lines.append(f"   上一轮无效输出：{last_invalid_plan_output}")
         lines.append("   禁止解释、寒暄、Markdown 代码块或输出其他文本。")
-    if not has_retrieval and not has_tool_results:
+    if not has_tool_results:
         lines.append("1. 尚无任何信息：根据问题性质选择")
         lines.append("   - 纯知识问题、与仓库代码无关 → answer")
         lines.append("   - 需了解仓库整体结构 → JSON，调用 repo_summary")
-        lines.append("   - 需搜索特定代码 → 优先 JSON（search_code / read_file），找不到时再用 retrieve")
+        lines.append("   - 需搜索特定代码 → JSON，优先 search_code / read_file，需要语义召回时调用 retrieve_code")
     else:
         lines.append("1. 检查已有信息是否足以回答：")
         lines.append("   - 问题与代码实现有关 → 必须有 .py 源码验证，仅有 docs/ 或 .md 文档描述不算足够")
         lines.append("   - 问题仅询问设计思路或文档内容 → 文档描述即可回答")
     lines.append("2. 信息不足以准确回答：")
     lines.append("   - 缺少代码验证（只有 docs 描述没有 .py 源码） → JSON，read_file 打开对应 .py 文件")
-    lines.append("   - 缺少代码内容 → 优先 JSON（read_file / search_code），找不到时再用 retrieve")
+    lines.append("   - 缺少代码内容 → JSON，优先 read_file / search_code，需要语义召回时调用 retrieve_code")
     if remaining_tool > 0:
         lines.append("   - 已有工具结果被截断(truncated) → JSON 加大 offset 继续读")
     lines.append("3. 剩余次数为 0 时只能输出 answer")
     lines.append("")
-    lines.append(f"剩余检索次数：{remaining_retrieval}    剩余工具调用次数：{remaining_tool}")
+    lines.append(f"剩余工具调用次数：{remaining_tool}")
     if remaining_tool == 0:
         lines.append("⚠ 工具次数已用完，只能输出 answer")
-    if remaining_retrieval == 0 and not has_retrieval:
-        lines.append("⚠ 检索次数已用完，只能基于当前信息回答或调用工具")
     lines.append("")
     lines.append(f"仓库路径：{repo_path}")
     lines.append("")

@@ -3,15 +3,13 @@ from langgraph.graph import END
 from src.graph.routing import (
     route_after_finish,
     route_after_plan,
-    route_after_retrieval,
     route_after_synthesis,
     route_after_tool_execution,
     route_after_validation,
 )
 
 
-def test_route_after_plan_selects_retrieve_tools_or_answer():
-    assert route_after_plan({"next_step": "retrieve"}) == "retrieve_context"
+def test_route_after_plan_selects_tools_or_answer():
     assert route_after_plan({"next_step": "execute_tools"}) == "execute_tools"
     assert route_after_plan({"next_step": "answer"}) == "synthesize_answer"
 
@@ -43,16 +41,6 @@ def test_route_after_plan_uses_round_limits_to_prevent_loops():
     assert (
         route_after_plan(
             {
-                "next_step": "retrieve",
-                "retrieval_round": 2,
-                "max_retrieval_rounds": 2,
-            }
-        )
-        == "synthesize_answer"
-    )
-    assert (
-        route_after_plan(
-            {
                 "next_step": "execute_tools",
                 "tool_round": 3,
                 "max_tool_rounds": 3,
@@ -62,8 +50,7 @@ def test_route_after_plan_uses_round_limits_to_prevent_loops():
     )
 
 
-def test_react_observation_routes_return_to_plan_next_step():
-    assert route_after_retrieval({}) == "plan_next_step"
+def test_tool_observation_routes_return_to_plan_next_step():
     assert route_after_tool_execution({}) == "plan_next_step"
 
 

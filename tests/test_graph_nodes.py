@@ -1,10 +1,8 @@
-import src.graph.nodes as graph_nodes
 from langchain_core.messages import SystemMessage, ToolMessage
 from src.graph.nodes import (
     execute_tools,
     finish,
     plan_next_step,
-    retrieve_context,
     synthesize_answer,
     validate_answer,
 )
@@ -41,13 +39,15 @@ def _make_state(question, chat_model=None):
     return state
 
 
-def test_plan_next_step_selects_retrieve():
+def test_plan_next_step_rejects_bare_retrieve():
+    """验证裸 retrieve 不再是合法规划结果，必须改用 retrieve_code 工具 JSON。"""
     model = RecordingInvokeModel("retrieve")
     state = _make_state("Where is main?", model)
 
     result = plan_next_step(state)
 
-    assert result["next_step"] == "retrieve"
+    assert result["next_step"] == "invalid"
+    assert result["invalid_plan_round"] == 1
     assert "tool_calls" not in result
     assert model.prompts
     assert "Where is main?" in model.prompts[0]
@@ -102,7 +102,7 @@ def test_plan_next_step_parses_json_as_tool_calls():
     state["messages"].append(
         {
             "role": "tool",
-            "name": "retrieve_context",
+            "name": "retrieve_code",
             "content": "1. src/runtime/runs.py:0-0\nclass RuntimeService",
         }
     )
@@ -146,33 +146,6 @@ def test_plan_next_step_tool_calls_flow_to_execution():
     assert_partial_update(executed)
 
 
-def test_retrieve_context_uses_rag_index(monkeypatch):
-    state = _make_state("Where is retrieval?")
-    fake_hits = [{"relative_path": "src/rag/retrieval.py", "content": "retrieve"}]
-    fake_index = object()
-    calls = []
-
-    def fake_retrieve_from_index(rag_index, question, top_k):
-        calls.append({"rag_index": rag_index, "question": question, "top_k": top_k})
-        return fake_hits
-
-    monkeypatch.setattr(graph_nodes, "retrieve_from_index", fake_retrieve_from_index)
-    state["rag_index"] = fake_index
-
-    result = retrieve_context(state)
-
-    assert len(result["messages"]) == 1
-    assert isinstance(result["messages"][0], ToolMessage)
-    assert result["messages"][0].name == "retrieve_context"
-    assert "src/rag/retrieval.py" in result["messages"][0].content
-    assert result["retrieval_round"] == 1
-    assert calls == [
-        {"rag_index": fake_index, "question": "Where is retrieval?", "top_k": 10}
-    ]
-    assert result["events"][-1] == {"type": "context_retrieved", "hit_count": 1}
-    assert_partial_update(result)
-
-
 def test_synthesize_validate_and_finish_use_chat_model():
     state = _make_state("Where is main?", RecordingInvokeModel("main is in src/main.py"))
 
@@ -206,7 +179,7 @@ def test_synthesize_answer_uses_chat_model_invoke_with_retrieval_context():
     state["messages"].append(
         {
             "role": "tool",
-            "name": "retrieve_context",
+            "name": "retrieve_code",
             "content": "1. src/rag/retrieval.py:10-20\ndef retrieve_from_index(...): pass",
         }
     )
