@@ -47,6 +47,7 @@ def build_graph():
             "retrieve_context": "retrieve_context",
             "execute_tools": "execute_tools",
             "synthesize_answer": "synthesize_answer",
+            "plan_next_step": "plan_next_step",
         },
     )
     graph.add_conditional_edges(

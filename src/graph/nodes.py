@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 
 from src.graph.prompts import (
     build_answer_prompt,
@@ -15,8 +15,9 @@ from src.tools.toolkit import ToolResult
 
 
 def plan_next_step(state: AgentGraphState) -> AgentGraphState:
-    """一次 LLM 调用同时产出 next_step 和 tool_calls：先解析 JSON，失败则用关键词匹配。"""
+    """一次 LLM 调用同时产出 next_step 和 tool_calls，并记录无效规划次数用于有限纠偏。"""
     chat_model = state.get("chat_model")
+    raw_response = ""
     if _has_invoke(chat_model):
         raw_response = _extract_model_content(
             chat_model.invoke(build_step_planning_prompt(state))  # type: ignore[union-attr]
@@ -24,15 +25,29 @@ def plan_next_step(state: AgentGraphState) -> AgentGraphState:
         tool_calls = _parse_tool_calls(raw_response)
         if tool_calls:
             return _append_event(
-                {"next_step": "execute_tools", "tool_calls": tool_calls},
+                {
+                    "next_step": "execute_tools",
+                    "tool_calls": tool_calls,
+                    "invalid_plan_round": 0,
+                },
                 state,
                 {"type": "next_step_planned", "next_step": "execute_tools", "call_count": len(tool_calls)},
             )
         next_step = _normalize_next_step(raw_response)
     else:
         next_step = "answer"
+
+    update: dict[str, object] = {"next_step": str(next_step)}
+    if next_step == "invalid":
+        update["invalid_plan_round"] = int(state.get("invalid_plan_round", 0)) + 1
+        update["messages"] = [
+            SystemMessage(content=raw_response, name="invalid_plan")
+        ]
+    else:
+        update["invalid_plan_round"] = 0
+
     return _append_event(
-        {"next_step": str(next_step)},
+        update,
         state,
         {"type": "next_step_planned", "next_step": str(next_step)},
     )

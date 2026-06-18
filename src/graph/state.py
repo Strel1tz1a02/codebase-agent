@@ -25,8 +25,10 @@ class AgentGraphState(TypedDict, total=False):
 
     retrieval_round: int
     tool_round: int
+    invalid_plan_round: int
     max_retrieval_rounds: int
     max_tool_rounds: int
+    max_invalid_plan_rounds: int
     retrieval_top_k: int
     
     answer: str
@@ -67,8 +69,10 @@ def create_initial_state(
 
         retrieval_round=0,
         tool_round=0,
+        invalid_plan_round=0,
         max_retrieval_rounds=1,
         max_tool_rounds=5,
+        max_invalid_plan_rounds=2,
         retrieval_top_k=10,
 
         answer="",

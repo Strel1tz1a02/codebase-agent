@@ -48,6 +48,14 @@ def _count_tool_messages(state: AgentGraphState, name: str) -> int:
     return sum(1 for message in _tool_messages(state) if _message_name(message) == name)
 
 
+def latest_invalid_plan_output(state: AgentGraphState) -> str:
+    """从 messages 中倒序找到最近一次无效规划输出，用于下一轮规划 prompt 纠偏。"""
+    for message in reversed(state.get("messages", [])):
+        if _message_name(message) == "invalid_plan":
+            return _message_content(message).strip()
+    return ""
+
+
 def _calc_remaining_rounds(state: AgentGraphState) -> tuple[int, int]:
     """计算剩余检索次数和剩余工具调用次数。"""
     remaining_retrieval = max(
@@ -72,6 +80,7 @@ def format_tool_results(state: AgentGraphState) -> str:
 def build_step_planning_prompt(state: AgentGraphState) -> str:
     """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定 retrieve / 工具JSON / answer。"""
     remaining_retrieval, remaining_tool = _calc_remaining_rounds(state)
+    invalid_plan_round = int(state.get("invalid_plan_round", 0))
     has_retrieval = _count_tool_messages(state, "retrieve_context") > 0
     has_tool_results = len(_tool_messages(state)) > 0
     tool_results_text = format_tool_results(state)
@@ -87,6 +96,12 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
         "",
         "决策规则：",
     ]
+    if invalid_plan_round > 0:
+        last_invalid_plan_output = latest_invalid_plan_output(state)
+        lines.append("0. 上一轮规划输出格式无效，本轮必须严格改正。")
+        if last_invalid_plan_output:
+            lines.append(f"   上一轮无效输出：{last_invalid_plan_output}")
+        lines.append("   禁止解释、寒暄、Markdown 代码块或输出其他文本。")
     if not has_retrieval and not has_tool_results:
         lines.append("1. 尚无任何信息：根据问题性质选择")
         lines.append("   - 纯知识问题、与仓库代码无关 → answer")
@@ -136,4 +151,3 @@ def build_answer_prompt(state: AgentGraphState) -> str:
         f"用户问题：{latest_user_question(state)}\n\n"
         f"已知代码上下文：\n{context}\n"
     )
-

@@ -16,9 +16,27 @@ def test_route_after_plan_selects_retrieve_tools_or_answer():
     assert route_after_plan({"next_step": "answer"}) == "synthesize_answer"
 
 
-def test_route_after_plan_falls_back_to_answer_for_unknown_next_step():
-    assert route_after_plan({"next_step": "unknown"}) == "synthesize_answer"
-    assert route_after_plan({"next_step": ""}) == "synthesize_answer"
+def test_route_after_plan_retries_unknown_next_step_until_limit():
+    assert (
+        route_after_plan(
+            {
+                "next_step": "unknown",
+                "invalid_plan_round": 1,
+                "max_invalid_plan_rounds": 2,
+            }
+        )
+        == "plan_next_step"
+    )
+    assert (
+        route_after_plan(
+            {
+                "next_step": "",
+                "invalid_plan_round": 2,
+                "max_invalid_plan_rounds": 2,
+            }
+        )
+        == "synthesize_answer"
+    )
 
 
 def test_route_after_plan_uses_round_limits_to_prevent_loops():

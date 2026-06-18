@@ -1,5 +1,5 @@
 import src.graph.nodes as graph_nodes
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import SystemMessage, ToolMessage
 from src.graph.nodes import (
     execute_tools,
     finish,
@@ -64,12 +64,33 @@ def test_plan_next_step_selects_answer():
 
 
 def test_plan_next_step_replans_unknown():
-    state = _make_state("Where is main?", RecordingInvokeModel("maybe later"))
+    model = RecordingInvokeModel("maybe later")
+    state = _make_state("Where is main?", model)
 
     result = plan_next_step(state)
 
     assert result["next_step"] == "invalid"
+    assert result["invalid_plan_round"] == 1
+    assert len(result["messages"]) == 1
+    assert isinstance(result["messages"][0], SystemMessage)
+    assert result["messages"][0].name == "invalid_plan"
+    assert result["messages"][0].content == "maybe later"
     assert result["events"][-1] == {"type": "next_step_planned", "next_step": "invalid"}
+    assert_partial_update(result)
+
+
+def test_plan_next_step_prompt_includes_previous_invalid_output():
+    model = RecordingInvokeModel("answer")
+    state = _make_state("Where is main?", model)
+    state["invalid_plan_round"] = 1
+    state["messages"].append(SystemMessage(content="maybe later", name="invalid_plan"))
+
+    result = plan_next_step(state)
+
+    assert result["next_step"] == "answer"
+    assert result["invalid_plan_round"] == 0
+    assert "上一轮规划输出格式无效" in model.prompts[0]
+    assert "maybe later" in model.prompts[0]
     assert_partial_update(result)
 
 
@@ -89,6 +110,7 @@ def test_plan_next_step_parses_json_as_tool_calls():
     result = plan_next_step(state)
 
     assert result["next_step"] == "execute_tools"
+    assert result["invalid_plan_round"] == 0
     assert result["tool_calls"] == [
         {"name": "read_file", "arguments": {"path": "src/runtime/runs.py"}}
     ]

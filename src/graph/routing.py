@@ -13,7 +13,7 @@ def route_after_plan(state: AgentGraphState) -> str:
         str: retrieve_context、execute_tools 或 synthesize_answer。
     作用:
         根据 next_step 选择检索、工具执行或直接回答路径，并做轮次上限保护。
-        无法识别的规划结果会兜底进入回答生成，避免反复规划造成死循环。
+        无法识别的规划结果会先有限重试，超过上限后兜底进入回答生成，避免死循环。
     """
     next_step = str(state.get("next_step", "answer"))
     if next_step == "retrieve":
@@ -26,6 +26,8 @@ def route_after_plan(state: AgentGraphState) -> str:
         return "execute_tools"
     if next_step == "answer":
         return "synthesize_answer"
+    if int(state.get("invalid_plan_round", 0)) < int(state.get("max_invalid_plan_rounds", 2)):
+        return "plan_next_step"
     return "synthesize_answer"
 
 
