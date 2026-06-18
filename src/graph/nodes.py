@@ -11,7 +11,7 @@ from src.graph.prompts import (
 )
 from src.graph.state import AgentGraphState
 from src.rag.retrieval import retrieve_from_index
-from src.tools.registry import ToolResult
+from src.tools.toolkit import ToolResult
 
 
 def plan_next_step(state: AgentGraphState) -> AgentGraphState:

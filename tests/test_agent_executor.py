@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.tools.registry import TOOL_REGISTRY, execute_tool
+from src.tools.toolkit import TOOL_REGISTRY, execute_tool
 
 
 class TestAgentExecutor(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestAgentExecutor(unittest.TestCase):
 
         result = execute_tool(
             "read_file",
-            {"repo_path": repo_path, "path": "src/cli/main.py", "max_chars": 20000},
+            {"repo_path": repo_path, "path": "src/cli/main.py"},
         )
 
         self.assertTrue(result.ok)

@@ -14,7 +14,7 @@ from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
 from src.runtime.store import RuntimeStore
-from src.tools.registry import execute_tool
+from src.tools.toolkit import execute_tool
 
 if TYPE_CHECKING:
     from src.runtime.projects import Project

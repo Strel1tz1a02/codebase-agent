@@ -1,4 +1,4 @@
-from src.tools.registry import build_tools
+from src.tools.toolkit import build_tools
 
 
 def test_build_tools_contains_expected_names():

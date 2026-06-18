@@ -5,25 +5,30 @@ from pydantic import BaseModel, Field
 
 from src.core.paths import resolve_repo_path
 
+MAX_LINES_PER_READ = 500
+MAX_CHARS_PER_READ = 50000
+
 
 class ReadFileInput(BaseModel):
+    """read_file 参数：repo_path 必填，其余可选。"""
+
     repo_path: str = Field(default="", description="Repository root path.")
     path: str = Field(default="", description="Relative file path inside the repository.")
-    max_chars: int = Field(default=8000, description="Maximum number of characters to read.")
+    offset: int = Field(default=1, description="Start line number (1-based). Default 1.")
+    limit: int = Field(default=0, description="Maximum lines to read. 0 means read to end.")
 
 
-def _read_file(repo_path: str, path: str, max_chars: int = 8000) -> dict[str, object]:
+def _read_file(repo_path: str, path: str, offset: int = 1, limit: int = 0) -> dict[str, object]:
     """
     输入：
         repo_path：代码仓库根目录路径。
         path：仓库内相对文件路径。
-        max_chars：最多读取多少字符。
+        offset：起始行号（1-based），默认第 1 行。
+        limit：最多读取行数，0 表示读到底。
     输出：
-        dict：包含 path、content 和 truncated。
+        dict：包含 path、start_line、end_line、total_lines、content、truncated。
     作用：
-        读取仓库内指定 UTF-8 文本文件。
-    设计原因：
-        代码问答经常需要按路径读取源码，工具层需要提供稳定的文件读取能力。
+        按行号范围读取仓库内 UTF-8 文本文件。默认全量读完，单次硬上限 500 行或 50000 字符。
     """
     repo_path = repo_path.strip()
     relative_path = path.strip()
@@ -40,14 +45,52 @@ def _read_file(repo_path: str, path: str, max_chars: int = 8000) -> dict[str, ob
     if not target.is_file():
         raise FileNotFoundError(f"file not found: {normalized_relative_path}")
 
-    content = target.read_text(encoding="utf-8")
-    limit = max(0, max_chars)
-    truncated = len(content) > limit
+    all_lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+    total_lines = len(all_lines)
+
+    offset = max(1, offset)
+    limit = max(0, limit or 0)
+
+    start_index = offset - 1
+    if start_index >= total_lines:
+        return {
+            "path": normalized_relative_path,
+            "start_line": offset,
+            "end_line": offset,
+            "total_lines": total_lines,
+            "content": "",
+            "truncated": False,
+        }
+
+    end_index = start_index + limit if limit > 0 else total_lines
+    end_index = min(end_index, total_lines)
+
+    selected_lines = all_lines[start_index:end_index]
+    content = "".join(selected_lines)
+
+    line_count = len(selected_lines)
+    char_count = len(content)
+
+    truncated = line_count > MAX_LINES_PER_READ or char_count > MAX_CHARS_PER_READ
     if truncated:
-        content = content[:limit]
+        if line_count > MAX_LINES_PER_READ:
+            end_index = start_index + MAX_LINES_PER_READ
+        if char_count > MAX_CHARS_PER_READ:
+            char_limit = MAX_CHARS_PER_READ
+            accumulated = 0
+            for i, line in enumerate(selected_lines):
+                accumulated += len(line)
+                if accumulated > char_limit:
+                    end_index = start_index + i
+                    break
+        selected_lines = all_lines[start_index:end_index]
+        content = "".join(selected_lines)
 
     return {
         "path": normalized_relative_path,
+        "start_line": start_index + 1,
+        "end_line": end_index,
+        "total_lines": total_lines,
         "content": content,
         "truncated": truncated,
     }
@@ -56,6 +99,14 @@ def _read_file(repo_path: str, path: str, max_chars: int = 8000) -> dict[str, ob
 read_file_tool = StructuredTool.from_function(
     func=_read_file,
     name="read_file",
-    description="Read a UTF-8 text file from inside a repository.",
+    description="Read lines from a UTF-8 text file inside a repository. Supports offset and limit for position-based reading.",
     args_schema=ReadFileInput,
+)
+
+READ_FILE_DESCRIPTION = (
+    "read_file: 读取指定文件内容，适合在总览结构后深入查看源码\n"
+    "  repo_path: 必填，仓库根目录路径\n"
+    "  path: 必填，仓库内相对文件路径\n"
+    "  offset: 起始行号（1-based），默认1\n"
+    "  limit: 读取行数，0=读到底。硬上限500行/50000字符，超出返回 truncated:true"
 )

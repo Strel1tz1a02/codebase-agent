@@ -1,15 +1,7 @@
 from __future__ import annotations
 
 from src.graph.state import AgentGraphState
-
-_OBSERVATION_TRUNCATE_LIMIT = 2000
-
-
-def _truncate(text: str, max_chars: int = _OBSERVATION_TRUNCATE_LIMIT) -> str:
-    """截断过长文本，附带截断标记，避免单条 observation 撑爆 prompt。"""
-    if len(text) <= max_chars:
-        return text
-    return text[:max_chars] + f"\n...(已截断，原文共 {len(text)} 字符)"
+from src.tools.toolkit import format_tool_descriptions
 
 
 def _message_role(message: object) -> str:
@@ -86,22 +78,11 @@ def format_tool_results(state: AgentGraphState) -> str:
         lines.append(f"[{name}]\n{_message_content(message)}")
     return "\n\n".join(lines) if lines else "无"
 
-
-def format_tool_results_summary(state: AgentGraphState, max_chars_per: int = _OBSERVATION_TRUNCATE_LIMIT) -> str:
-    """格式化工具结果摘要，对每条超长内容做截断，供规划节点快速浏览。"""
-    lines = []
-    for message in _tool_messages(state):
-        name = _message_name(message) or "tool"
-        content = _message_content(message)
-        lines.append(f"[{name}]\n{_truncate(content, max_chars_per)}")
-    return "\n\n".join(lines) if lines else "无"
-
-
 def build_step_planning_prompt(state: AgentGraphState) -> str:
     """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定 retrieve / 工具JSON / answer。"""
     remaining_retrieval, remaining_tool = _calc_remaining_rounds(state)
     has_retrieval = _count_tool_messages(state, "retrieve_context") > 0
-    tool_results_text = format_tool_results_summary(state)
+    tool_results_text = format_tool_results(state)
     repo_path = str(state.get("repo_path", ""))
 
     lines = [
@@ -129,16 +110,7 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
     lines.append("")
     lines.append(f"仓库路径：{repo_path}")
     lines.append("")
-    lines.append("可用工具：")
-    lines.append(f"  repo_summary  : 了解仓库整体结构、文件数量与类型、关键目录、入口文件候选")
-    lines.append(f"                 参数：{{\"repo_path\":\"{repo_path}\"}}")
-    lines.append(f"  read_file     : 读取指定文件内容，适合在 repo_summary 定位到关键文件后深入查看")
-    lines.append(f"                 参数：{{\"repo_path\":\"{repo_path}\",\"path\":\"相对路径\",\"max_chars\":8000}}")
-    lines.append(f"  search_code   : 按关键字搜索代码，scope 可选 src/tests/docs/all")
-    lines.append(f"                 参数：{{\"repo_path\":\"{repo_path}\",\"keyword\":\"关键字\",\"scope\":\"src\",\"limit\":20}}")
-    lines.append(f"  retrieve_code : 语义检索与 query 最相关的代码片段")
-    lines.append(f"                 参数：{{\"repo_path\":\"{repo_path}\",\"query\":\"语义检索描述\",\"top_k\":5}}")
-    lines.append("")
+    lines.append(format_tool_descriptions())
     lines.append("工具调用原则：一次可规划多工具、先总览再深入、信息够时输出 answer")
     lines.append("")
     lines.append(f"用户问题：{latest_user_question(state)}")

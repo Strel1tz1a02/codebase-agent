@@ -2,7 +2,7 @@ import pytest
 
 from src.core.errors import PathSafetyError
 from src.core.paths import resolve_repo_path
-from src.tools.registry import execute_tool
+from src.tools.toolkit import execute_tool
 
 
 def test_resolve_repo_path_rejects_escape(tmp_path):

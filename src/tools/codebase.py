@@ -309,6 +309,11 @@ repo_summary_tool = StructuredTool.from_function(
     args_schema=RepoSummaryInput,
 )
 
+REPO_SUMMARY_DESCRIPTION = (
+    "repo_summary: 了解仓库整体结构（文件数量、类型分布、关键目录、入口文件候选）\n"
+    "  repo_path: 必填，仓库根目录路径"
+)
+
 search_code_tool = StructuredTool.from_function(
     func=_search_code,
     name="search_code",
@@ -316,9 +321,24 @@ search_code_tool = StructuredTool.from_function(
     args_schema=SearchCodeInput,
 )
 
+SEARCH_CODE_DESCRIPTION = (
+    "search_code: 按关键字搜索代码文件中的匹配行\n"
+    "  repo_path: 必填，仓库根目录路径\n"
+    "  keyword: 必填，搜索关键词\n"
+    "  scope: src/tests/docs/all，默认src\n"
+    "  limit: 最多返回条数，默认20"
+)
+
 retrieve_code_tool = StructuredTool.from_function(
     func=_retrieve_code,
     name="retrieve_code",
     description="Retrieve relevant code snippets with the existing RAG pipeline.",
     args_schema=RetrieveCodeInput,
+)
+
+RETRIEVE_CODE_DESCRIPTION = (
+    "retrieve_code: 语义检索与 query 最相关的代码片段（RAG召回）\n"
+    "  repo_path: 必填，仓库根目录路径\n"
+    "  query: 必填，用自然语言描述你想找什么代码\n"
+    "  top_k: 返回片段数，默认5"
 )

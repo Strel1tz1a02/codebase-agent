@@ -5,8 +5,15 @@ from dataclasses import dataclass, field
 
 from langchain_core.tools import BaseTool
 
-from src.tools.codebase import repo_summary_tool, retrieve_code_tool, search_code_tool
-from src.tools.filesystem import read_file_tool
+from src.tools.codebase import (
+    REPO_SUMMARY_DESCRIPTION,
+    RETRIEVE_CODE_DESCRIPTION,
+    SEARCH_CODE_DESCRIPTION,
+    repo_summary_tool,
+    retrieve_code_tool,
+    search_code_tool,
+)
+from src.tools.filesystem import READ_FILE_DESCRIPTION, read_file_tool
 
 
 @dataclass
@@ -21,8 +28,6 @@ class ToolResult:
         ToolResult：工具执行结果对象。
     作用：
         统一描述一次工具调用的成功或失败。
-    设计原因：
-        工具层不应该依赖旧 agent 包；结果对象放在 registry 中可以避免循环 import。
     """
 
     ok: bool
@@ -69,10 +74,27 @@ def build_tools() -> list[BaseTool]:
         list[BaseTool]：LangChain-compatible 工具列表。
     作用：
         统一返回 codebase-agent 当前可用的工具。
-    设计原因：
-        Graph、API 和 CLI 后续可以从同一个 registry 获取工具，避免多个入口维护多份工具清单。
     """
     return DEFAULT_TOOLS.copy()
+
+
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    "repo_summary": REPO_SUMMARY_DESCRIPTION,
+    "read_file": READ_FILE_DESCRIPTION,
+    "search_code": SEARCH_CODE_DESCRIPTION,
+    "retrieve_code": RETRIEVE_CODE_DESCRIPTION,
+}
+
+
+def format_tool_descriptions() -> str:
+    """将所有工具的说明格式化为 prompt 可用的文本块。"""
+    lines = ["可用工具：", ""]
+    for name in ["repo_summary", "read_file", "search_code", "retrieve_code"]:
+        desc = TOOL_DESCRIPTIONS.get(name, "")
+        if desc:
+            lines.append(f"  {desc}")
+            lines.append("")
+    return "\n".join(lines)
 
 
 def execute_tool(tool_name: str, arguments: dict[str, object]) -> ToolResult:
@@ -83,9 +105,7 @@ def execute_tool(tool_name: str, arguments: dict[str, object]) -> ToolResult:
     输出：
         ToolResult：统一的工具执行结果。
     作用：
-        根据工具名从 registry 找到 LangChain tool 并执行。
-    设计原因：
-        旧 controller 和 graph 仍需要 ToolResult 结构；工具实现已经迁移到新的 LangChain 工具层。
+        根据工具名查找并执行工具。
     """
     tool = TOOL_REGISTRY.get(tool_name)
 
