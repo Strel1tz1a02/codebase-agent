@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
 from src.core.errors import RunNotFoundError
-from src.runtime.runs import Run
+
+if TYPE_CHECKING:
+    from src.runtime.runs import Run
 
 @dataclass
 class RuntimeSession:

@@ -13,6 +13,7 @@ from src.models.chat import build_chat_model
 from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
+from src.runtime.memory import build_memory_messages
 from src.runtime.sessions import RuntimeSession
 from src.runtime.store import RuntimeStore
 from src.tools.toolkit import execute_tool
@@ -179,11 +180,11 @@ class RuntimeService:
         """
         project = self.store.get_project(project_id)
         session = project.get_session(session_id)
-        run = self._run_graph(project, session_id, question)
+        run = self._run_graph(project, session, question)
         session.add_run(run)
         return run
 
-    def _run_graph(self, project: Project, session_id: str, question: str) -> Run:
+    def _run_graph(self, project: Project, session: RuntimeSession, question: str) -> Run:
         """
         输入：
             project：run 所属 project。
@@ -202,7 +203,7 @@ class RuntimeService:
 
         run = Run(
             run_id=uuid4().hex,
-            session_id=session_id,
+            session_id=session.session_id,
             question=question,
             status="running"
         )
@@ -216,6 +217,7 @@ class RuntimeService:
             chat_model=self.chat_model,
             tool_executor=self.tool_executor,
         )
+        state["messages"] = build_memory_messages(session, run.question)
         result = self.graph.invoke(state)# result 是新的state
 
         for event in result.get("events", []):

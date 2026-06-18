@@ -110,6 +110,38 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
     ]
 
 
+def test_runtime_injects_session_history_into_graph_messages(tmp_path):
+    """验证同一 session 的历史问答会被注入下一轮 graph messages。"""
+    graph_calls = []
+
+    class FakeGraph:
+        def invoke(self, state):
+            graph_calls.append(state)
+            return {
+                "status": "completed",
+                "answer": f"answer {len(graph_calls)}",
+                "events": [],
+            }
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+
+    runtime.ask(project.project_id, session.session_id, "First question?")
+    runtime.ask(project.project_id, session.session_id, "Second question?")
+
+    assert graph_calls[0]["messages"] == [
+        {"role": "user", "content": "First question?"}
+    ]
+    assert graph_calls[1]["messages"] == [
+        {"role": "user", "content": "First question?"},
+        {"role": "assistant", "content": "answer 1"},
+        {"role": "user", "content": "Second question?"},
+    ]
+
+
 def test_runtime_injects_chat_model_into_graph_state(tmp_path):
     graph_calls = []
     chat_model = object()
