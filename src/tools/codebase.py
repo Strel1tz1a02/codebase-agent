@@ -33,12 +33,42 @@ class RetrieveCodeInput(BaseModel):
     reindex: bool = Field(default=False, description="Whether to rebuild the RAG index first.")
 
 
-def _repo_summary(repo_path: str) -> dict[str, object]:
+def _build_file_tree(files: list[Path], root: Path) -> str:
+    """将文件路径列表转为缩进目录树文本，LLM 可直接据此定位文件。"""
+    tree: dict[str, object] = {}
+    for file_path in files:
+        try:
+            rel = file_path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        parts = rel.split("/")
+        cursor = tree
+        for i, part in enumerate(parts):
+            if i == len(parts) - 1:
+                cursor.setdefault("__files__", []).append(part)  # type: ignore[attr-defined]
+            else:
+                cursor = cursor.setdefault(part, {})  # type: ignore[attr-defined]
+
+    def _render(node: dict[str, object], indent: int = 0) -> list[str]:
+        prefix = "  " * indent
+        lines: list[str] = []
+        dirs = sorted(k for k in node if k != "__files__")
+        for d in dirs:
+            lines.append(f"{prefix}{d}/")
+            lines.extend(_render(node[d], indent + 1))  # type: ignore[arg-type]
+        for f in sorted(node.get("__files__", [])):
+            lines.append(f"{prefix}  {f}")
+        return lines
+
+    return "\n".join(_render(tree))
+
+
+def repo_summary(repo_path: str) -> dict[str, object]:
     """
     输入：
         repo_path：代码仓库根目录路径。
     输出：
-        dict：项目文件数量、文件类型、关键目录和入口候选。
+        dict：项目文件数量、文件类型、关键目录、入口候选和目录树。
     作用：
         将 repo_summary 包装成 LangChain tool 可调用函数。
     设计原因：
@@ -56,6 +86,7 @@ def _repo_summary(repo_path: str) -> dict[str, object]:
         "file_types": _count_file_types(kept_files),
         "key_dirs": _summarize_key_dirs(kept_files, root),
         "entry_candidates": _find_entry_candidates(kept_files, root),
+        "tree": _build_file_tree(kept_files, root),
     }
 
 
@@ -185,7 +216,7 @@ def _path_matches_search_scope(relative_path: str, scope: str) -> bool:
     return False
 
 
-def _search_code(
+def search_code(
     repo_path: str,
     keyword: str,
     scope: str = "src",
@@ -261,7 +292,7 @@ def _search_code(
     }
 
 
-def _retrieve_code(
+def retrieve_code(
     repo_path: str,
     query: str,
     top_k: int = 5,
@@ -303,19 +334,20 @@ def _retrieve_code(
 
 
 repo_summary_tool = StructuredTool.from_function(
-    func=_repo_summary,
+    func=repo_summary,
     name="repo_summary",
     description="Summarize repository structure, file types, key directories, and entry candidates.",
     args_schema=RepoSummaryInput,
 )
 
 REPO_SUMMARY_DESCRIPTION = (
-    "repo_summary: 了解仓库整体结构（文件数量、类型分布、关键目录、入口文件候选）\n"
-    "  repo_path: 必填，仓库根目录路径"
+    "repo_summary: 了解仓库整体结构（目录树、文件数量、类型分布、关键目录、入口文件候选）\n"
+    "  repo_path: 必填，仓库根目录路径\n"
+    "  返回 tree 字段包含完整目录树和每个文件相对于仓库的路径，可直接据此定位到具体文件"
 )
 
 search_code_tool = StructuredTool.from_function(
-    func=_search_code,
+    func=search_code,
     name="search_code",
     description="Search code files by keyword inside a repository.",
     args_schema=SearchCodeInput,
@@ -330,7 +362,7 @@ SEARCH_CODE_DESCRIPTION = (
 )
 
 retrieve_code_tool = StructuredTool.from_function(
-    func=_retrieve_code,
+    func=retrieve_code,
     name="retrieve_code",
     description="Retrieve relevant code snippets with the existing RAG pipeline.",
     args_schema=RetrieveCodeInput,

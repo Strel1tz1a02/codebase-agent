@@ -8,6 +8,7 @@ DEFAULT_IGNORED_DIRS = {
     ".pytest_cache",
     ".vscode",
     ".idea",
+    ".codebase_agent",
     "node_modules",
     "__pycache__",
     ".venv",

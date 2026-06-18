@@ -68,7 +68,7 @@ def create_initial_state(
         retrieval_round=0,
         tool_round=0,
         max_retrieval_rounds=2,
-        max_tool_rounds=3,
+        max_tool_rounds=5,
         retrieval_top_k=5,
 
         answer="",

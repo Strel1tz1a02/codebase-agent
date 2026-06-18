@@ -18,7 +18,7 @@ class ReadFileInput(BaseModel):
     limit: int = Field(default=0, description="Maximum lines to read. 0 means read to end.")
 
 
-def _read_file(repo_path: str, path: str, offset: int = 1, limit: int = 0) -> dict[str, object]:
+def read_file(repo_path: str, path: str, offset: int = 1, limit: int = 0) -> dict[str, object]:
     """
     输入：
         repo_path：代码仓库根目录路径。
@@ -97,7 +97,7 @@ def _read_file(repo_path: str, path: str, offset: int = 1, limit: int = 0) -> di
 
 
 read_file_tool = StructuredTool.from_function(
-    func=_read_file,
+    func=read_file,
     name="read_file",
     description="Read lines from a UTF-8 text file inside a repository. Supports offset and limit for position-based reading.",
     args_schema=ReadFileInput,
