@@ -2,7 +2,7 @@
 
 `codebase-agent` 是面向代码仓库理解的本地 Agent 实验项目。当前主路径基于：
 
-- CLI：`python -m src.cli`
+- Server：`python -m src.server`
 - API：`src.api.app:create_app`
 - Runtime：`RuntimeService`
 - Graph：LangGraph workflow
@@ -28,24 +28,12 @@ conda activate CodeBaseAgent
 python -m pip install -r requirements.txt
 ```
 
-## CLI
-
-构建项目索引：
-
-```powershell
-python -m src.cli index --repo E:\projects\codebase-agent --project codebase-agent
-```
-
-向已索引项目提问：
-
-```powershell
-python -m src.cli ask --project codebase-agent "Where is the entry point?"
-```
+## Server
 
 启动 API 服务：
 
 ```powershell
-python -m src.cli serve
+python -m src.server
 ```
 
 ## API

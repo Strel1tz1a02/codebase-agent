@@ -19,7 +19,7 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "repo_summary")
         self.assertEqual(result.error, "")
-        self.assertIn("src/cli/main.py", result.output["entry_candidates"])
+        self.assertIn("src/server/main.py", result.output["entry_candidates"])
 
     def test_repo_summary_returns_basic_repository_facts(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
@@ -33,20 +33,20 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertGreaterEqual(result.output["file_count"], 1)
         self.assertIn("src", result.output["key_dirs"])
         self.assertIn("tests", result.output["key_dirs"])
-        self.assertIn("src/cli/main.py", result.output["entry_candidates"])
+        self.assertIn("src/server/main.py", result.output["entry_candidates"])
 
     def test_read_file_returns_repository_file_content(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
 
         result = execute_tool(
             "read_file",
-            {"repo_path": repo_path, "path": "src/cli/main.py"},
+            {"repo_path": repo_path, "path": "src/server/main.py"},
         )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.tool_name, "read_file")
         self.assertEqual(result.error, "")
-        self.assertEqual(result.output["path"], "src/cli/main.py")
+        self.assertEqual(result.output["path"], "src/server/main.py")
         self.assertIn("def main(", result.output["content"])
         self.assertFalse(result.output["truncated"])
 

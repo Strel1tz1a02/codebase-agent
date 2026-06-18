@@ -173,6 +173,18 @@ def test_validate_answer_fails_empty_answer():
     assert_partial_update(result)
 
 
+def test_finish_marks_running_state_failed():
+    """验证 finish 会把未收束的 running 状态标记为失败，暴露异常路径。"""
+    state = _make_state("Where is main?")
+
+    result = finish(state)
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "graph finished without terminal status"
+    assert result["events"][-1] == {"type": "graph_finished", "status": "failed"}
+    assert_partial_update(result)
+
+
 def test_synthesize_answer_uses_chat_model_invoke_with_retrieval_context():
     model = RecordingInvokeModel("Retrieval is in src/rag/retrieval.py.")
     state = _make_state("Where is retrieval?", model)

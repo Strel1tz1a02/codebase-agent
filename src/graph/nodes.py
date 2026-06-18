@@ -162,13 +162,15 @@ def finish(state: AgentGraphState) -> AgentGraphState:
     输出:
         追加 graph_finished 事件后的 AgentGraphState。
     作用:
-        统一记录 graph 结束事件，并在缺少 status 时补成 completed。
+        统一记录 graph 结束事件，并在状态不是终态时标记 failed。
     为什么需要这个函数?
         结束节点让 runtime 后续可以稳定消费 graph 完成事件，而不是从多个业务节点里推断结束状态。
     """
     update: dict[str, object] = {}
-    if not str(state.get("status", "")):
-        update["status"] = "completed"
+    status = str(state.get("status", "")).strip()
+    if status not in {"completed", "failed", "stopped"}:
+        update["status"] = "failed"
+        update["reason"] = "graph finished without terminal status"
     return _append_event(
         update,
         state,
