@@ -47,13 +47,37 @@ async function request(path, options = {}) {
 
 function renderProjects() {
   el.projectList.innerHTML = "";
+  if (state.projects.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "project-list-empty";
+    empty.textContent = "暂无项目";
+    el.projectList.appendChild(empty);
+    return;
+  }
   for (const project of state.projects) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "project-item";
-    button.innerHTML = `<strong>${escapeHtml(project.name)}</strong><span>${escapeHtml(project.index_status)} · ${escapeHtml(project.repo_path)}</span>`;
-    button.addEventListener("click", () => selectProject(project));
-    el.projectList.appendChild(button);
+    const item = document.createElement("div");
+    item.className = "project-item";
+    if (state.project && state.project.project_id === project.project_id) {
+      item.classList.add("active");
+    }
+
+    const selectButton = document.createElement("button");
+    selectButton.type = "button";
+    selectButton.className = "project-select";
+    selectButton.innerHTML = `<strong>${escapeHtml(project.name)}</strong><span>${escapeHtml(project.index_status)} · ${escapeHtml(project.repo_path)}</span>`;
+    selectButton.addEventListener("click", () => selectProject(project));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "project-delete";
+    deleteButton.title = "删除项目";
+    deleteButton.setAttribute("aria-label", `删除项目 ${project.name}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => deleteProject(project));
+
+    item.appendChild(selectButton);
+    item.appendChild(deleteButton);
+    el.projectList.appendChild(item);
   }
 }
 
@@ -83,6 +107,38 @@ async function selectProject(project) {
   });
   state.sessionId = session.session_id;
   renderDetails();
+}
+
+async function loadProjects() {
+  try {
+    const payload = await request("/projects");
+    state.projects = payload.projects || [];
+    renderProjects();
+  } catch (error) {
+    el.projectList.innerHTML = "";
+    const item = document.createElement("div");
+    item.className = "project-list-empty error";
+    item.textContent = error.message;
+    el.projectList.appendChild(item);
+  }
+}
+
+async function deleteProject(project) {
+  try {
+    await request(`/projects/${project.project_id}`, { method: "DELETE" });
+    state.projects = state.projects.filter((item) => item.project_id !== project.project_id);
+    if (state.project && state.project.project_id === project.project_id) {
+      state.project = null;
+      state.sessionId = "";
+      state.runId = "";
+      el.events.innerHTML = "";
+      resetConversation();
+      renderDetails();
+    }
+    renderProjects();
+  } catch (error) {
+    appendMessage("system", error.message, "error");
+  }
 }
 
 function resetConversation() {
@@ -197,3 +253,4 @@ function displayRole(role) {
 renderDetails();
 resetConversation();
 checkHealth();
+loadProjects();

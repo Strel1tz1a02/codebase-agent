@@ -153,21 +153,52 @@ label {
 }
 
 .project-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.8rem;
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.project-select {
   width: 100%;
   text-align: left;
   padding: 0.9rem;
 }
 
-.project-item strong,
-.project-item span {
+.project-select strong,
+.project-select span {
   display: block;
   overflow-wrap: anywhere;
 }
 
-.project-item span {
+.project-select span {
   margin-top: 0.35rem;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.project-delete {
+  min-width: 2.8rem;
+  padding: 0;
+  color: var(--danger);
+  font-size: 1.35rem;
+}
+
+.project-item.active .project-select {
+  border-color: var(--accent);
+}
+
+.project-list-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 0.9rem;
+  color: var(--muted);
+  background: #101318;
+}
+
+.project-list-empty.error {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .chat {

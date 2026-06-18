@@ -19,6 +19,10 @@ class ProjectResponse(BaseModel):
     index_status: str
 
 
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectResponse]
+
+
 class CreateSessionResponse(BaseModel):
     session_id: str
     status: str = "running"

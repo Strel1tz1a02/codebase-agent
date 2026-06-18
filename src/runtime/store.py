@@ -25,10 +25,21 @@ class RuntimeStore:
     projects: dict[str, Project] = field(default_factory=dict)
 
     def add_project(self, project: Project) -> None:
+        """把 project 写入 store。"""
         self.projects[project.project_id] = project
 
+    def list_projects(self) -> list[Project]:
+        """按插入顺序返回所有 project。"""
+        return list(self.projects.values())
+
     def get_project(self, project_id: str) -> Project:
+        """按 project_id 读取 project，不存在时抛出领域异常。"""
         if project_id not in self.projects:
             raise ProjectNotFoundError(f"project not found: {project_id}")
         return self.projects[project_id]
-    
+
+    def delete_project(self, project_id: str) -> Project:
+        """删除并返回指定 project，不存在时抛出领域异常。"""
+        project = self.get_project(project_id)
+        del self.projects[project_id]
+        return project

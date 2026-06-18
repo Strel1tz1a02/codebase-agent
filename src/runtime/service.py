@@ -59,6 +59,14 @@ class RuntimeService:
         """按 project_id 读取项目。"""
         return self.store.get_project(project_id)
 
+    def list_projects(self) -> list[Project]:
+        """列出当前 Runtime 管理的所有项目。"""
+        return self.store.list_projects()
+
+    def delete_project(self, project_id: str) -> Project:
+        """删除指定项目，并返回被删除的项目对象。"""
+        return self.store.delete_project(project_id)
+
     def create_session(self, project_id: str) -> RuntimeSession:
         """为指定 project 创建新的运行会话。"""
         session = RuntimeSession(session_id=uuid4().hex)

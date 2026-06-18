@@ -21,6 +21,19 @@ def test_runtime_creates_and_loads_project(tmp_path):
     assert runtime.get_project_index(project.project_id) is None
 
 
+def test_runtime_lists_and_deletes_projects(tmp_path):
+    runtime = RuntimeService()
+    first = runtime.create_project("first", str(tmp_path / "first"))
+    second = runtime.create_project("second", str(tmp_path / "second"))
+
+    deleted = runtime.delete_project(first.project_id)
+
+    assert runtime.list_projects() == [second]
+    assert deleted is first
+    with pytest.raises(ProjectNotFoundError):
+        runtime.get_project(first.project_id)
+
+
 def test_runtime_service_uses_store_instead_of_flat_maps():
     runtime = RuntimeService()
 
