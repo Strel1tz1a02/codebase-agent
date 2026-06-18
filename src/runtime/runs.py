@@ -141,7 +141,7 @@ class RuntimeService:
         project = self.store.get_project(project_id)
         project.index_status = "indexing"  # type: ignore[assignment]
         try:
-            index = build_project_index(project.project_id, project.repo_path)
+            index = build_project_index(project.project_id, project.repo_path, self.config)
             project.index = index
             project.index_status = "indexed"  # type: ignore[assignment]
         except Exception:

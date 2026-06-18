@@ -140,12 +140,33 @@ def test_runtime_builds_chat_model_when_api_key_env_exists(monkeypatch):
 
     monkeypatch.setenv("TEST_LLM_KEY", "secret")
     monkeypatch.setattr(runtime_runs, "build_chat_model", fake_build_chat_model)
-    config = AppConfig(model=ModelConfig(api_key_env="TEST_LLM_KEY"))
+    config = AppConfig(model_config=ModelConfig(api_key_env="TEST_LLM_KEY"))
 
     runtime = RuntimeService(graph=object(), config=config)
 
     assert runtime.chat_model is fake_model
-    assert built_configs == [config.model]
+    assert built_configs == [config]
+
+
+def test_runtime_passes_app_config_when_indexing_project(monkeypatch, tmp_path):
+    """验证 RuntimeService 构建项目索引时会传递自身持有的 AppConfig。"""
+    captured_calls = []
+    fake_index = object()
+
+    def fake_build_project_index(project_id, repo_path, config=None):
+        """记录索引构建入参，并返回一个最小可用的索引替身。"""
+        captured_calls.append((project_id, repo_path, config))
+        return fake_index
+
+    monkeypatch.setattr(runtime_runs, "build_project_index", fake_build_project_index)
+    config = AppConfig()
+    runtime = RuntimeService(graph=object(), config=config)
+    project = runtime.create_project("demo", str(tmp_path))
+
+    runtime.index_project(project.project_id)
+
+    assert captured_calls == [(project.project_id, str(tmp_path), config)]
+    assert project.index is fake_index
 
 
 def test_runtime_ask_requires_indexed_project(tmp_path):

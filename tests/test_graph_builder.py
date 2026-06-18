@@ -122,21 +122,20 @@ def test_build_graph_can_retrieve_again_before_answering(monkeypatch):
     assert result["answer"] == "answer"
 
 
-def test_build_graph_replans_after_unknown_next_step():
+def test_build_graph_falls_back_to_answer_after_unknown_next_step():
     graph = build_graph()
     state = _make_state(
         "Where is main?",
         chat_model=SequencedInvokeModel(
-            ["maybe later", "answer", "main is in src/main.py"]
+            ["maybe later", "fallback answer"]
         ),
     )
 
     result = graph.invoke(state)
 
     assert result["status"] == "completed"
-    assert result["answer"] == "main is in src/main.py"
+    assert result["answer"] == "fallback answer"
     assert [event["type"] for event in result["events"]] == [
-        "next_step_planned",
         "next_step_planned",
         "answer_synthesized",
         "answer_validated",
