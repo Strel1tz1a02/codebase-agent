@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -36,22 +37,19 @@ class ToolResult:
     error: str = ""
 
     def to_dict(self) -> dict[str, object]:
-        """
-        输入：
-            self：当前 ToolResult 对象。
-        输出：
-            dict：可写入 Agent history 的结构化结果。
-        作用：
-            把 dataclass 转成普通字典。
-        设计原因：
-            Runtime、Graph 和测试都更容易消费普通 dict。
-        """
+        """把 dataclass 转成普通字典，供 Runtime 和测试消费。"""
         return {
             "ok": self.ok,
             "tool_name": self.tool_name,
             "output": self.output,
             "error": self.error,
         }
+
+    def __str__(self) -> str:
+        """成功时只返回内容，失败时返回错误信息，避免 LLM 看到 Python 对象 repr。"""
+        if self.ok:
+            return json.dumps(self.output, ensure_ascii=False, default=str)
+        return f"工具 {self.tool_name} 执行失败: {self.error}"
 
 
 DEFAULT_TOOLS: list[BaseTool] = [

@@ -131,7 +131,7 @@ class TestAgentExecutor(unittest.TestCase):
 
     def test_retrieve_code_returns_citable_chunks(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)
-        fake_hits = [
+        fake_hit_dicts = [
             {
                 "relative_path": "src/runtime/runs.py",
                 "start_line": 9,
@@ -141,7 +141,17 @@ class TestAgentExecutor(unittest.TestCase):
             }
         ]
 
-        with patch("src.tools.codebase.retrieve_relevant_chunks", return_value=fake_hits) as mock_retrieve:
+        class FakeHit:
+            def __init__(self, data):
+                self._data = data
+            def to_dict(self):
+                return self._data
+
+        fake_hits = [FakeHit(d) for d in fake_hit_dicts]
+
+        with patch("src.tools.codebase.retrieve_from_index", return_value=fake_hits) as mock_retrieve, \
+             patch("src.tools.codebase.build_project_index") as mock_build:
+            mock_build.return_value = object()
             result = execute_tool(
                 "retrieve_code",
                 {
@@ -156,13 +166,9 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertEqual(result.error, "")
         self.assertEqual(result.output["query"], "How does the agent loop execute tools?")
         self.assertEqual(result.output["top_k"], 1)
-        self.assertEqual(result.output["matches"], fake_hits)
-        mock_retrieve.assert_called_once_with(
-            question="How does the agent loop execute tools?",
-            repo_path=repo_path,
-            top_k=1,
-            reindex=False,
-        )
+        self.assertEqual(result.output["matches"], fake_hit_dicts)
+        mock_retrieve.assert_called_once()
+        self.assertEqual(mock_retrieve.call_args[0][1], "How does the agent loop execute tools?")
 
     def test_retrieve_code_requires_query(self) -> None:
         repo_path = str(Path(__file__).resolve().parent.parent)

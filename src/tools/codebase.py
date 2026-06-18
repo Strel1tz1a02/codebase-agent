@@ -5,7 +5,8 @@ from pathlib import Path
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from src.rag.retrieval import retrieve_relevant_chunks
+from src.rag.indexing import build_project_index
+from src.rag.retrieval import retrieve_from_index
 from src.utils.ignore import should_ignore_dir, should_ignore_file
 
 
@@ -30,7 +31,6 @@ class RetrieveCodeInput(BaseModel):
     repo_path: str = Field(default="", description="Repository root path.")
     query: str = Field(default="", description="Semantic retrieval query.")
     top_k: int = Field(default=5, description="Maximum number of retrieved chunks.")
-    reindex: bool = Field(default=False, description="Whether to rebuild the RAG index first.")
 
 
 def _build_file_tree(files: list[Path], root: Path) -> str:
@@ -296,21 +296,8 @@ def retrieve_code(
     repo_path: str,
     query: str,
     top_k: int = 5,
-    reindex: bool = False,
 ) -> dict[str, object]:
-    """
-    输入：
-        repo_path：代码仓库根目录路径。
-        query：语义检索问题。
-        top_k：最多返回多少条代码片段。
-        reindex：是否强制重建索引。
-    输出：
-        dict：包含 query、top_k 和 matches。
-    作用：
-        将 retrieve_code 包装成 LangChain tool 可调用函数。
-    设计原因：
-        让后续 Agent 可以通过 tool calling 触发 RAG 检索。
-    """
+    """语义检索代码片段：每次调用时按 repo_path 构建临时索引并检索，返回命中的代码片段。"""
     repo_path = repo_path.strip()
     query = query.strip()
 
@@ -320,16 +307,16 @@ def retrieve_code(
         raise ValueError("query is required")
 
     limit = max(0, top_k)
-    matches = retrieve_relevant_chunks(
-        question=query,
-        repo_path=repo_path,
-        top_k=limit,
-        reindex=reindex,
-    )
+    if limit == 0:
+        return {"query": query, "top_k": limit, "matches": []}
+
+    project_id = Path(repo_path).name
+    index = build_project_index(project_id, repo_path)
+    hits = [hit.to_dict() for hit in retrieve_from_index(index, query, limit)]
     return {
         "query": query,
         "top_k": limit,
-        "matches": matches,
+        "matches": hits,
     }
 
 

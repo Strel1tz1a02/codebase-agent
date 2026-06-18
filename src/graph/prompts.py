@@ -48,15 +48,6 @@ def _count_tool_messages(state: AgentGraphState, name: str) -> int:
     return sum(1 for message in _tool_messages(state) if _message_name(message) == name)
 
 
-def _count_non_retrieval_tool_messages(state: AgentGraphState) -> int:
-    """统计非检索类的 tool message 数量（即 read_file/search_code 等工具结果数）。"""
-    return sum(
-        1
-        for message in _tool_messages(state)
-        if _message_name(message) != "retrieve_context"
-    )
-
-
 def _calc_remaining_rounds(state: AgentGraphState) -> tuple[int, int]:
     """计算剩余检索次数和剩余工具调用次数。"""
     remaining_retrieval = max(
