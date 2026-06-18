@@ -13,6 +13,7 @@ from src.models.chat import build_chat_model
 from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
+from src.runtime.sessions import RuntimeSession
 from src.runtime.store import RuntimeStore
 from src.tools.toolkit import execute_tool
 
@@ -49,7 +50,8 @@ class Run:
     """
 
     run_id: str
-    question: str
+    session_id: str = ""
+    question: str = ""
     status: Literal["queued", "running", "completed", "failed", "stopped"] = "queued"
     answer: str = ""
     reason: str = ""
@@ -88,6 +90,42 @@ class RuntimeService:
         self.tool_executor = tool_executor or execute_tool
         self.store = RuntimeStore()
 
+    def create_project(self, project_name: str, repo_path: str) -> Project:
+        project = Project(project_id=uuid4().hex, name=project_name, repo_path=repo_path)
+        self.store.add_project(project)
+        return project
+
+    def get_project(self, project_id: str) -> Project:
+        return self.store.get_project(project_id)
+
+    def create_session(self, project_id: str) -> RuntimeSession:
+        session = RuntimeSession(session_id=uuid4().hex)
+        self.store.get_project(project_id).add_session(session)
+        return session
+
+    def get_session(self, project_id: str, session_id: str) -> RuntimeSession:
+        return self.store.get_project(project_id).get_session(session_id)
+
+    def get_run(self, session: RuntimeSession, run_id: str) -> Run:
+        return session.get_run(run_id)
+
+    def append_event(self, session: RuntimeSession, run_id: str, event_type: str, payload: dict[str, object]) -> RunEvent:
+        run = session.get_run(run_id)
+        event = RunEvent(event_id=uuid4().hex, event_type=event_type, payload=payload)
+        run.add_event(event)
+        return event
+
+    def list_run_events(self, session: RuntimeSession, run_id: str) -> list[RunEvent]:
+        return session.get_run(run_id).list_events()
+
+    def validate_project_exists(self, project_id: str) -> None:
+        self.store.get_project(project_id)
+
+    def validate_session_exists(self, project_id: str, session_id: str) -> None:
+        self.store.get_project(project_id).get_session(session_id)
+
+    def validate_run_exists(self, session: RuntimeSession, run_id: str) -> None:
+        session.get_run(run_id)
 
     def index_project(self, project_id: str) -> Project:
         """
@@ -135,17 +173,17 @@ class RuntimeService:
         输出：
             Run：已经完成 graph 执行并更新状态的 run。
         作用：
-            统一对外提供“提问并执行”的高层入口。
+            统一对外提供"提问并执行"的高层入口。
         为什么需要这个函数：
             ask 拿到完整归属路径后，可以在内部直接定位 project/session/run，不需要全局查找辅助函数。
         """
         project = self.store.get_project(project_id)
         session = project.get_session(session_id)
-        run = self._run_graph(project, question)
+        run = self._run_graph(project, session_id, question)
         session.add_run(run)
         return run
 
-    def _run_graph(self, project: Project, question: str) -> Run:
+    def _run_graph(self, project: Project, session_id: str, question: str) -> Run:
         """
         输入：
             project：run 所属 project。
@@ -164,8 +202,9 @@ class RuntimeService:
 
         run = Run(
             run_id=uuid4().hex,
+            session_id=session_id,
             question=question,
-            status = "running"
+            status="running"
         )
         run.add_event(RunEvent(event_id=uuid4().hex, event_type="graph_start", payload={"run_id": run.run_id}))
 

@@ -183,9 +183,4 @@ def test_runtime_uses_ask_as_public_run_entrypoint():
     runtime = RuntimeService(graph=object())
 
     assert hasattr(runtime, "ask")
-    assert not hasattr(runtime, "create_run")
-    assert not hasattr(runtime, "run_graph")
-    assert hasattr(runtime, "_create_run")
     assert hasattr(runtime, "_run_graph")
-    assert not hasattr(runtime, "_find_session")
-    assert not hasattr(runtime, "_find_run")

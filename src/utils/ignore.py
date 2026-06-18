@@ -60,21 +60,3 @@ def should_ignore_file(file_path: str | Path) -> bool:
         return True
     return False
 
-
-def should_ignore_path(path: str | Path) -> bool:
-    """
-    输入：
-        path：目录或文件路径（str 或 Path）。
-    输出：
-        bool，True 表示该路径应被 V1 扫描器忽略，False 表示保留。
-    作用：
-        提供统一的忽略判断入口，供扫描代码直接调用。
-    设计原因：
-        调用方不需要关心路径是文件还是目录，扫描逻辑更简洁稳定。
-    """
-    path_obj = Path(path)
-    if should_ignore_dir(path_obj.name):
-        return True
-    if should_ignore_file(path_obj):
-        return True
-    return False

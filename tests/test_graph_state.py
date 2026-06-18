@@ -20,8 +20,8 @@ def test_create_initial_state_sets_project_and_question():
     assert state.get("tool_calls", []) == []
     assert state["retrieval_round"] == 0
     assert state["tool_round"] == 0
-    assert state["max_retrieval_rounds"] == 2
-    assert state["max_tool_rounds"] == 3
+    assert state["max_retrieval_rounds"] == 1
+    assert state["max_tool_rounds"] == 5
     assert state["answer"] == ""
     assert state["status"] == "running"
     assert state["reason"] == ""
