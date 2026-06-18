@@ -1,8 +1,8 @@
-import pytest
+﻿import pytest
 
 from src.core.errors import ProjectNotFoundError
 from src.rag.schemas import RagIndex
-from src.runtime.runs import RuntimeService
+from src.runtime.service import RuntimeService
 
 
 def test_runtime_creates_and_loads_project(tmp_path):
@@ -64,7 +64,7 @@ def test_runtime_index_project_builds_rag_index(tmp_path):
 
 
 def test_runtime_index_project_delegates_to_rag_layer(tmp_path, monkeypatch):
-    calls: list[dict[str, str]] = []
+    calls: list[dict[str, object]] = []
     fake_index = RagIndex(
         project_id="demo",
         repo_path=str(tmp_path),
@@ -72,17 +72,21 @@ def test_runtime_index_project_delegates_to_rag_layer(tmp_path, monkeypatch):
         document_count=0,
     )
 
-    def fake_build_project_index(project_id: str, repo_path: str):
-        calls.append({"project_id": project_id, "repo_path": repo_path})
+    def fake_build_project_index(project_id: str, repo_path: str, config=None):
+        """记录 RuntimeService 传给 RAG 层的索引构建参数。"""
+        calls.append({"project_id": project_id, "repo_path": repo_path, "config": config})
         return fake_index
 
-    monkeypatch.setattr("src.runtime.runs.build_project_index", fake_build_project_index)
+    monkeypatch.setattr("src.runtime.service.build_project_index", fake_build_project_index)
     runtime = RuntimeService()
     project = runtime.create_project("demo", str(tmp_path))
 
     indexed = runtime.index_project(project.project_id)
 
     assert indexed.index_status == "indexed"
-    assert calls == [{"project_id": project.project_id, "repo_path": str(tmp_path)}]
+    assert calls == [
+        {"project_id": project.project_id, "repo_path": str(tmp_path), "config": runtime.config}
+    ]
     assert indexed.index is fake_index
     assert runtime.get_project_index(project.project_id) is fake_index
+

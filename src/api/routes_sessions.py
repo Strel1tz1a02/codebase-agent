@@ -6,7 +6,7 @@ from uuid import uuid4
 from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateSessionResponse
 from src.core.errors import ProjectNotFoundError, SessionNotFoundError
-from src.runtime.sessions import RuntimeSession
+from src.runtime.session import RuntimeSession
 
 def runtime_session_to_response(session: RuntimeSession) -> CreateSessionResponse:
     return CreateSessionResponse(

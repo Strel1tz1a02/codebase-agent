@@ -1,7 +1,7 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 
 from src.api.app import create_app
-from src.runtime.runs import RuntimeService
+from src.runtime.service import RuntimeService
 
 
 def test_health_returns_ok():
@@ -33,6 +33,7 @@ def test_ui_page_serves_static_app():
     assert response.status_code == 200
     assert "codebase-agent" in response.text
     assert 'lang="zh-CN"' in response.text
-    assert "项目" in response.text
+    assert "椤圭洰" in response.text
     assert "/ui/static/app.js" in response.text
     assert "/ui/static/styles.css" in response.text
+

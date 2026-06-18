@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.runtime.sessions import RuntimeSession
+from src.runtime.session import RuntimeSession
 
 
 def build_memory_messages(session: RuntimeSession, current_question: str) -> list[dict[str, str]]:

@@ -1,11 +1,11 @@
-from types import SimpleNamespace
+﻿from types import SimpleNamespace
 
 from src.runtime.memory import build_memory_messages
-from src.runtime.sessions import RuntimeSession
+from src.runtime.session import RuntimeSession
 
 
 def test_build_memory_messages_includes_history_and_current_question():
-    """验证 memory 会按 user/assistant 顺序组装历史 run 和当前问题。"""
+    """Verify memory builds history and current question in message order."""
     session = RuntimeSession(session_id="session-1")
     session.runs["run-1"] = SimpleNamespace(
         question="First question?",
@@ -19,3 +19,4 @@ def test_build_memory_messages_includes_history_and_current_question():
         {"role": "assistant", "content": "First answer."},
         {"role": "user", "content": "Second question?"},
     ]
+

@@ -10,7 +10,7 @@ from src.api.routes_projects import register_project_routes
 from src.api.routes_runs import register_run_routes
 from src.api.routes_sessions import register_session_routes
 from src.api.schemas import HealthResponse
-from src.runtime.runs import RuntimeService
+from src.runtime.service import RuntimeService
 
 
 def create_app(runtime: RuntimeService | None = None) -> FastAPI:

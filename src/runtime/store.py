@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from src.core.errors import ProjectNotFoundError
 
 if TYPE_CHECKING:
-    from src.runtime.projects import Project
+    from src.runtime.project import Project
 
 @dataclass
 class RuntimeStore:

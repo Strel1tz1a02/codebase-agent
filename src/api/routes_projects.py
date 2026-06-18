@@ -6,7 +6,7 @@ from uuid import uuid4
 from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateProjectRequest, ProjectResponse
 from src.core.errors import ProjectNotFoundError
-from src.runtime.projects import Project
+from src.runtime.project import Project
 
 
 def project_to_response(project: Project) -> ProjectResponse:

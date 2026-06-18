@@ -1,7 +1,7 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 
 from src.api.app import create_app
-from src.runtime.runs import RuntimeService
+from src.runtime.service import RuntimeService
 
 
 class FakeGraph:
@@ -93,7 +93,7 @@ def test_get_run_and_events_endpoints(tmp_path):
 
 
 def test_get_run_returns_404_for_unknown_run(tmp_path):
-    """验证查询未知 run 时返回统一 404 JSON 响应。"""
+    """楠岃瘉鏌ヨ鏈煡 run 鏃惰繑鍥炵粺涓€ 404 JSON 鍝嶅簲銆?""
     runtime = RuntimeService()
     project = runtime.create_project("demo", str(tmp_path))
     session = runtime.create_session(project.project_id)
@@ -106,3 +106,4 @@ def test_get_run_returns_404_for_unknown_run(tmp_path):
 
     assert response.status_code == 404
     assert response.json() == {"detail": "run not found: missing"}
+

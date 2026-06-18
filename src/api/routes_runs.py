@@ -6,7 +6,7 @@ from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateRunRequest, RunEventListResponse, RunEventResponse, RunResponse
 from src.core.errors import ProjectNotFoundError, RunNotFoundError, SessionNotFoundError
 from src.runtime.events import RunEvent
-from src.runtime.runs import Run
+from src.runtime.run import Run
 
 
 def run_to_response(run: Run) -> RunResponse:

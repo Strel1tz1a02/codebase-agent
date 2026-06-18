@@ -1,9 +1,9 @@
-import pytest
+﻿import pytest
 
 from src.core.config import AppConfig, ModelConfig
 from src.core.errors import RagIndexNotReadyError
-import src.runtime.runs as runtime_runs
-from src.runtime.runs import RuntimeService
+import src.runtime.service as runtime_service
+from src.runtime.service import RuntimeService
 
 
 def _write_repo_file(tmp_path):
@@ -171,7 +171,7 @@ def test_runtime_builds_chat_model_when_api_key_env_exists(monkeypatch):
         return fake_model
 
     monkeypatch.setenv("TEST_LLM_KEY", "secret")
-    monkeypatch.setattr(runtime_runs, "build_chat_model", fake_build_chat_model)
+    monkeypatch.setattr(runtime_service, "build_chat_model", fake_build_chat_model)
     config = AppConfig(model_config=ModelConfig(api_key_env="TEST_LLM_KEY"))
 
     runtime = RuntimeService(graph=object(), config=config)
@@ -190,7 +190,7 @@ def test_runtime_passes_app_config_when_indexing_project(monkeypatch, tmp_path):
         captured_calls.append((project_id, repo_path, config))
         return fake_index
 
-    monkeypatch.setattr(runtime_runs, "build_project_index", fake_build_project_index)
+    monkeypatch.setattr(runtime_service, "build_project_index", fake_build_project_index)
     config = AppConfig()
     runtime = RuntimeService(graph=object(), config=config)
     project = runtime.create_project("demo", str(tmp_path))
@@ -237,3 +237,4 @@ def test_runtime_uses_ask_as_public_run_entrypoint():
 
     assert hasattr(runtime, "ask")
     assert hasattr(runtime, "_run_graph")
+
