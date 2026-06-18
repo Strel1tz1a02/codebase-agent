@@ -18,9 +18,18 @@ class SequencedInvokeModel:
         return FakeChatResponse(next(self.responses))
 
 
+def _make_state(question, chat_model=None, rag_index=None, tool_executor=None):
+    return create_initial_state(
+        "demo", "E:/repo", question,
+        rag_index=rag_index,
+        chat_model=chat_model,
+        tool_executor=tool_executor,
+    )
+
+
 def test_build_graph_returns_completed_answer():
     graph = build_graph()
-    state = create_initial_state("demo", "E:/repo", "hello")
+    state = _make_state("hello")
 
     result = graph.invoke(state)
 
@@ -30,17 +39,23 @@ def test_build_graph_returns_completed_answer():
 
 def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(monkeypatch):
     graph = build_graph()
-    state = create_initial_state("demo", "E:/repo", "Where is retrieval?")
-    state["chat_model"] = SequencedInvokeModel(
-        [
-            "retrieve",
-            "tool",
-            '[{"name": "inspect_hit", "arguments": {"path": "src/rag/retrieval.py"}}]',
-            "answer",
-            "retrieval is in src/rag/retrieval.py",
-        ]
+    state = _make_state(
+        "Where is retrieval?",
+        chat_model=SequencedInvokeModel(
+            [
+                "retrieve",
+                '[{"name": "inspect_hit", "arguments": {"path": "src/rag/retrieval.py"}}]',
+                "answer",
+                "retrieval is in src/rag/retrieval.py",
+            ]
+        ),
+        rag_index=object(),
+        tool_executor=lambda name, args: {
+            "name": name,
+            "ok": True,
+            "output": "inspected",
+        },
     )
-    state["rag_index"] = object()
     monkeypatch.setattr(
         graph_nodes,
         "retrieve_from_index",
@@ -48,11 +63,6 @@ def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(m
             {"relative_path": "src/rag/retrieval.py", "content": question}
         ],
     )
-    state["tool_executor"] = lambda call, current: {
-        "name": call["name"],
-        "ok": True,
-        "output": "inspected",
-    }
 
     result = graph.invoke(state)
 
@@ -73,7 +83,6 @@ def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(m
         "next_step_planned",
         "context_retrieved",
         "next_step_planned",
-        "tool_use_planned",
         "tools_executed",
         "next_step_planned",
         "answer_synthesized",
@@ -84,14 +93,14 @@ def test_build_graph_runs_retrieve_tool_and_answer_flow_with_fake_dependencies(m
 
 def test_build_graph_can_retrieve_again_before_answering(monkeypatch):
     graph = build_graph()
-    state = create_initial_state("demo", "E:/repo", "Where is config?")
-    state["chat_model"] = SequencedInvokeModel(
-        ["retrieve", "retrieve", "answer", "answered after 2 retrievals"]
+    state = _make_state(
+        "Where is config?",
+        chat_model=SequencedInvokeModel(
+            ["retrieve", "retrieve", "answer", "answered after 2 retrievals"]
+        ),
+        rag_index=object(),
     )
     retrieval_calls = []
-
-    fake_index = object()
-    state["rag_index"] = fake_index
 
     def fake_retrieve_from_index(rag_index, question, top_k):
         retrieval_calls.append((rag_index, question, top_k))
@@ -109,15 +118,17 @@ def test_build_graph_can_retrieve_again_before_answering(monkeypatch):
     assert result["status"] == "completed"
     assert result["retrieval_round"] == 2
     assert len(retrieval_calls) == 2
-    assert retrieval_calls[0][0] is fake_index
+    assert retrieval_calls[0][0] is state["rag_index"]
     assert result["answer"] == "answered after 2 retrievals"
 
 
 def test_build_graph_replans_after_unknown_next_step():
     graph = build_graph()
-    state = create_initial_state("demo", "E:/repo", "Where is main?")
-    state["chat_model"] = SequencedInvokeModel(
-        ["maybe later", "answer", "main is in src/main.py"]
+    state = _make_state(
+        "Where is main?",
+        chat_model=SequencedInvokeModel(
+            ["maybe later", "answer", "main is in src/main.py"]
+        ),
     )
 
     result = graph.invoke(state)

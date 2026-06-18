@@ -4,7 +4,6 @@ from src.graph.nodes import (
     execute_tools,
     finish,
     plan_next_step,
-    plan_tool_use,
     retrieve_context,
     synthesize_answer,
     validate_answer,
@@ -35,23 +34,37 @@ def assert_partial_update(result):
     assert "tool_executor" not in result
 
 
-def test_plan_next_step_uses_chat_model_invoke():
-    state = create_initial_state("demo", "E:/repo", "Where is main?")
+def _make_state(question, chat_model=None):
+    state = create_initial_state("demo", "E:/repo", question, rag_index=None, chat_model=chat_model, tool_executor=None)
+    if chat_model is not None:
+        state["chat_model"] = chat_model
+    return state
+
+
+def test_plan_next_step_selects_retrieve():
     model = RecordingInvokeModel("retrieve")
-    state["chat_model"] = model
+    state = _make_state("Where is main?", model)
 
     result = plan_next_step(state)
 
     assert result["next_step"] == "retrieve"
+    assert "tool_calls" not in result
     assert model.prompts
     assert "Where is main?" in model.prompts[0]
-    assert "retrieve" in model.prompts[0]
     assert_partial_update(result)
 
 
-def test_plan_next_step_keeps_unknown_model_plan_for_router_replan():
-    state = create_initial_state("demo", "E:/repo", "Where is main?")
-    state["chat_model"] = RecordingInvokeModel("maybe later")
+def test_plan_next_step_selects_answer():
+    state = _make_state("Where is main?", RecordingInvokeModel("answer"))
+
+    result = plan_next_step(state)
+
+    assert result["next_step"] == "answer"
+    assert_partial_update(result)
+
+
+def test_plan_next_step_replans_unknown():
+    state = _make_state("Where is main?", RecordingInvokeModel("maybe later"))
 
     result = plan_next_step(state)
 
@@ -60,8 +73,59 @@ def test_plan_next_step_keeps_unknown_model_plan_for_router_replan():
     assert_partial_update(result)
 
 
+def test_plan_next_step_parses_json_as_tool_calls():
+    model = RecordingInvokeModel(
+        '[{"name": "read_file", "arguments": {"path": "src/runtime/runs.py"}}]'
+    )
+    state = _make_state("Read runtime file", model)
+    state["messages"].append(
+        {
+            "role": "tool",
+            "name": "retrieve_context",
+            "content": "1. src/runtime/runs.py:0-0\nclass RuntimeService",
+        }
+    )
+
+    result = plan_next_step(state)
+
+    assert result["next_step"] == "execute_tools"
+    assert result["tool_calls"] == [
+        {"name": "read_file", "arguments": {"path": "src/runtime/runs.py"}}
+    ]
+    assert result["events"][-1] == {
+        "type": "next_step_planned",
+        "next_step": "execute_tools",
+        "call_count": 1,
+    }
+    assert "Read runtime file" in model.prompts[0]
+    assert "read_file" in model.prompts[0]
+    assert_partial_update(result)
+
+
+def test_plan_next_step_tool_calls_flow_to_execution():
+    state = _make_state("List files", RecordingInvokeModel(
+        '[{"name": "repo_summary", "arguments": {"path": "."}}]'
+    ))
+
+    planned = plan_next_step(state)
+
+    assert planned["next_step"] == "execute_tools"
+    execution_state = _make_state("List files")
+    execution_state["tool_calls"] = planned["tool_calls"]
+    execution_state["tool_executor"] = lambda name, args: {"name": "repo_summary", "ok": True, "output": ["src/main.py"]}
+    executed = execute_tools(execution_state)
+
+    assert len(executed["messages"]) == 1
+    assert isinstance(executed["messages"][0], ToolMessage)
+    assert executed["messages"][0].name == "repo_summary"
+    assert executed["tool_round"] == 1
+    assert executed["events"][-1] == {"type": "tools_executed", "result_count": 1}
+    assert_partial_update(planned)
+    assert_partial_update(executed)
+
+
 def test_retrieve_context_uses_rag_index(monkeypatch):
-    state = create_initial_state("demo", "E:/repo", "Where is retrieval?")
+    state = _make_state("Where is retrieval?")
     fake_hits = [{"relative_path": "src/rag/retrieval.py", "content": "retrieve"}]
     fake_index = object()
     calls = []
@@ -87,58 +151,8 @@ def test_retrieve_context_uses_rag_index(monkeypatch):
     assert_partial_update(result)
 
 
-def test_tool_planning_uses_chat_model_and_execution_uses_executor():
-    state = create_initial_state("demo", "E:/repo", "List files")
-    planned_calls = [{"name": "repo_summary", "arguments": {"path": "."}}]
-    tool_results = [{"name": "repo_summary", "ok": True, "output": ["src/main.py"]}]
-    state["chat_model"] = RecordingInvokeModel(
-        '[{"name": "repo_summary", "arguments": {"path": "."}}]'
-    )
-
-    planned = plan_tool_use(state)
-    execution_state = create_initial_state("demo", "E:/repo", "List files")
-    execution_state["tool_calls"] = planned_calls
-    execution_state["tool_executor"] = lambda call, current: tool_results[0]
-    executed = execute_tools(execution_state)
-
-    assert planned["tool_calls"] == planned_calls
-    assert len(executed["messages"]) == 1
-    assert isinstance(executed["messages"][0], ToolMessage)
-    assert executed["messages"][0].name == "repo_summary"
-    assert "src/main.py" in executed["messages"][0].content
-    assert executed["tool_round"] == 1
-    assert executed["events"][-1] == {"type": "tools_executed", "result_count": 1}
-    assert_partial_update(planned)
-    assert_partial_update(executed)
-
-
-def test_plan_tool_use_uses_chat_model_invoke_json_calls():
-    state = create_initial_state("demo", "E:/repo", "Read runtime file")
-    model = RecordingInvokeModel(
-        '[{"name": "read_file", "arguments": {"path": "src/runtime/runs.py"}}]'
-    )
-    state["chat_model"] = model
-    state["messages"].append(
-        {
-            "role": "tool",
-            "name": "retrieve_context",
-            "content": "1. src/runtime/runs.py:0-0\nclass RuntimeService",
-        }
-    )
-
-    result = plan_tool_use(state)
-
-    assert result["tool_calls"] == [
-        {"name": "read_file", "arguments": {"path": "src/runtime/runs.py"}}
-    ]
-    assert "Read runtime file" in model.prompts[0]
-    assert "read_file" in model.prompts[0]
-    assert_partial_update(result)
-
-
 def test_synthesize_validate_and_finish_use_chat_model():
-    state = create_initial_state("demo", "E:/repo", "Where is main?")
-    state["chat_model"] = RecordingInvokeModel("main is in src/main.py")
+    state = _make_state("Where is main?", RecordingInvokeModel("main is in src/main.py"))
 
     synthesized = synthesize_answer(state)
     validated = validate_answer(synthesized)
@@ -153,7 +167,7 @@ def test_synthesize_validate_and_finish_use_chat_model():
 
 
 def test_validate_answer_fails_empty_answer():
-    state = create_initial_state("demo", "E:/repo", "Where is main?")
+    state = _make_state("Where is main?")
     state["answer"] = "   "
 
     result = validate_answer(state)
@@ -165,9 +179,8 @@ def test_validate_answer_fails_empty_answer():
 
 
 def test_synthesize_answer_uses_chat_model_invoke_with_retrieval_context():
-    state = create_initial_state("demo", "E:/repo", "Where is retrieval?")
     model = RecordingInvokeModel("Retrieval is in src/rag/retrieval.py.")
-    state["chat_model"] = model
+    state = _make_state("Where is retrieval?", model)
     state["messages"].append(
         {
             "role": "tool",

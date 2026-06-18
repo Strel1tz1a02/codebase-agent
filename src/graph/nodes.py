@@ -4,27 +4,31 @@ import json
 
 from langchain_core.messages import ToolMessage
 
+from src.graph.prompts import (
+    build_answer_prompt,
+    build_step_planning_prompt,
+    latest_user_question,
+)
 from src.graph.state import AgentGraphState
 from src.rag.retrieval import retrieve_from_index
 from src.tools.registry import ToolResult
 
 
 def plan_next_step(state: AgentGraphState) -> AgentGraphState:
-    """
-    输入:
-        state: 当前 AgentGraphState，可选包含 chat_model。
-    输出:
-        写入 next_step 并追加 next_step_planned 事件后的 AgentGraphState。
-    作用:
-        根据当前问题、检索结果和工具结果规划下一步是检索、工具调用，还是生成回答。
-    为什么需要这个函数?
-        ReAct 风格流程需要在每次 observation 后重新思考下一步；统一规划节点可以让 RAG 和工具结果都回到同一个决策点。
-    """
+    """一次 LLM 调用同时产出 next_step 和 tool_calls：先解析 JSON，失败则用关键词匹配。"""
     chat_model = state.get("chat_model")
     if _has_invoke(chat_model):
-        next_step = _normalize_next_step(
-            _extract_model_content(chat_model.invoke(_build_step_planning_prompt(state)))  # type: ignore[union-attr]
+        raw_response = _extract_model_content(
+            chat_model.invoke(build_step_planning_prompt(state))  # type: ignore[union-attr]
         )
+        tool_calls = _parse_tool_calls(raw_response)
+        if tool_calls:
+            return _append_event(
+                {"next_step": "execute_tools", "tool_calls": tool_calls},
+                state,
+                {"type": "next_step_planned", "next_step": "execute_tools", "call_count": len(tool_calls)},
+            )
+        next_step = _normalize_next_step(raw_response)
     else:
         next_step = "answer"
     return _append_event(
@@ -49,10 +53,10 @@ def retrieve_context(state: AgentGraphState) -> AgentGraphState:
     rag_index = state.get("rag_index")
     if rag_index is not None:
         hits = [
-            hit.to_dict() if hasattr(hit, "to_dict") else hit# hasattr:是否有这个属性或方法
+            hit.to_dict() if hasattr(hit, "to_dict") else hit
             for hit in retrieve_from_index(
                 rag_index,
-                _latest_user_question(state),
+                latest_user_question(state),
                 int(state.get("retrieval_top_k", 5)),
             )
         ]
@@ -68,31 +72,6 @@ def retrieve_context(state: AgentGraphState) -> AgentGraphState:
         {"retrieval_round": retrieval_round, "messages": [retrieval_message]},
         state,
         {"type": "context_retrieved", "hit_count": len(hits)},
-    )
-
-
-def plan_tool_use(state: AgentGraphState) -> AgentGraphState:
-    """
-    输入:
-        state: 当前 AgentGraphState，可选包含 chat_model。
-    输出:
-        写入 tool_calls 并追加 tool_use_planned 事件后的 AgentGraphState。
-    作用:
-        基于当前上下文、检索结果和问题规划需要执行的工具调用。
-    为什么需要这个函数?
-        工具规划和工具执行需要分开；这样 graph 可以在执行前检查、记录或跳过空 tool_calls。
-    """
-    chat_model = state.get("chat_model")
-    if _has_invoke(chat_model):
-        tool_calls = _parse_tool_calls(
-            _extract_model_content(chat_model.invoke(_build_tool_planning_prompt(state)))  # type: ignore[union-attr]
-        )
-    else:
-        tool_calls = []
-    return _append_event(
-        {"tool_calls": list(tool_calls)},
-        state,
-        {"type": "tool_use_planned", "call_count": len(tool_calls)},
     )
 
 
@@ -167,7 +146,7 @@ def synthesize_answer(state: AgentGraphState) -> AgentGraphState:
     chat_model = state.get("chat_model")
     if _has_invoke(chat_model):
         answer = _extract_model_content(
-            chat_model.invoke(_build_answer_prompt(state))  # type: ignore[union-attr]
+            chat_model.invoke(build_answer_prompt(state))  # type: ignore[union-attr]
         )
     else:
         answer = "Graph execution completed."
@@ -224,200 +203,25 @@ def finish(state: AgentGraphState) -> AgentGraphState:
     )
 
 
-def _latest_user_question(state: AgentGraphState) -> str:
-    """
-    输入:
-        state: 当前 AgentGraphState，包含 messages。
-    输出:
-        str: 最近一条 user 消息内容；不存在时返回空字符串。
-    作用:
-        为上下文准备和检索节点提供统一的问题提取逻辑。
-    为什么需要这个函数?
-        messages 是标准对话结构，集中读取可以避免每个节点重复写倒序查找逻辑。
-    """
-    for message in reversed(state.get("messages", [])):
-        role = _message_role(message)
-        if role in {"user", "human"}:
-            return _message_content(message)
-    return ""
-
-
 def _has_invoke(candidate: object) -> bool:
-    """
-    输入:
-        candidate: 可能的 LangChain chat model。
-    输出:
-        bool: 是否提供 invoke 方法。
-    作用:
-        让 graph 节点通过统一的 LangChain invoke 接口调用真实模型或测试模型。
-    为什么需要这个函数?
-        LangChain chat model 通常不是普通 callable，而是通过 invoke(prompt/messages) 调用。
-    """
     return callable(getattr(candidate, "invoke", None))
 
 
 def _extract_model_content(response: object) -> str:
-    """
-    输入:
-        response: LangChain 模型返回值或测试 fake 返回值。
-    输出:
-        str: 可写入 graph state 的文本。
-    作用:
-        统一提取 AIMessage.content，并兼容普通字符串。
-    为什么需要这个函数?
-        不同模型返回对象略有差异，节点只需要稳定的文本答案。
-    """
-    return str(getattr(response, "content", response)).strip()# getattr:获取对象属性，提供默认值,默认值是 response 本身，适用于 response 是字符串的情况。
+    return str(getattr(response, "content", response)).strip()
 
 
 def _normalize_next_step(raw_step: str) -> str:
-    """
-    输入:
-        raw_step: LLM 返回的下一步文本。
-    输出:
-        str: retrieve、tool 或 answer。
-    作用:
-        把模型输出约束到 routing 支持的三个分支。
-    为什么需要这个函数?
-        模型可能返回解释性文本，路由层只接受稳定枚举。
-    """
+    """从 LLM 文本输出中提取下一步：retrieve / answer。工具调用由 JSON 解析提前处理。"""
     normalized = raw_step.strip().lower()
     if "retrieve" in normalized or "检索" in normalized:
         return "retrieve"
-    if "tool" in normalized or "工具" in normalized:
-        return "tool"
     if "answer" in normalized or "回答" in normalized:
         return "answer"
     return "invalid"
 
 
-def _build_step_planning_prompt(state: AgentGraphState) -> str:
-    """
-    输入:
-        state: 当前 graph state。
-    输出:
-        str: 规划节点使用的 LLM prompt。
-    作用:
-        让模型根据问题和当前 observation 决定下一步。
-    为什么需要这个函数?
-        planning prompt 独立后，后续可以单独测试和演进提示词，而不污染节点主流程。
-    """
-    return (
-        "你是 codebase-agent 的流程规划节点。\n"
-        "只能回答一个词：retrieve、tool 或 answer。\n"
-        "规则：如果还没有检索上下文，优先回答 retrieve；如果需要读取具体文件或搜索代码，回答 tool；"
-        "如果已有足够上下文可以总结，回答 answer。\n\n"
-        f"用户问题：{_latest_user_question(state)}\n"
-        f"检索结果数量：{_count_tool_messages(state, 'retrieve_context')}\n"
-        f"工具结果数量：{_count_non_retrieval_tool_messages(state)}\n"
-    )
-
-
-def _build_answer_prompt(state: AgentGraphState) -> str:
-    """
-    输入:
-        state: 当前 graph state。
-    输出:
-        str: 回答生成节点使用的 LLM prompt。
-    作用:
-        把用户问题、RAG 命中和工具结果整理成模型可消费的上下文。
-    为什么需要这个函数?
-        回答生成不应直接把整个 state 交给模型；显式 prompt 可以控制上下文和引用格式。
-    """
-    observation_context = _format_observation_messages(state)
-    return (
-        "你是一个代码库分析助手。请基于给定代码上下文回答用户问题。\n"
-        "要求：优先引用文件路径和行号；如果上下文不足，明确说明缺少什么。\n\n"
-        f"用户问题：{_latest_user_question(state)}\n\n"
-        f"已知 observation：\n{observation_context}\n"
-    )
-
-
-def _build_tool_planning_prompt(state: AgentGraphState) -> str:
-    """
-    输入:
-        state: 当前 graph state。
-    输出:
-        str: 工具规划节点使用的 LLM prompt。
-    作用:
-        让模型在需要时输出结构化工具调用。
-    为什么需要这个函数?
-        工具规划需要严格 JSON 输出，独立 prompt 便于约束格式和测试。
-    """
-    return (
-        "你是 codebase-agent 的工具规划节点。\n"
-        "可用工具：repo_summary、read_file、search_code、retrieve_code。\n"
-        "所有工具都需要 repo_path 参数（值为当前仓库路径）。\n"
-        "参数说明：\n"
-        "- repo_summary: repo_path\n"
-        '- read_file: repo_path, path（必填，相对路径）, max_chars（可选）\n'
-        '- search_code: repo_path, keyword（必填）, scope（可选）, limit（可选）\n'
-        '- retrieve_code: repo_path, query（必填）, top_k（可选）\n'
-        "只返回 JSON 数组，不要返回解释。数组元素格式："
-        '{"name":"工具名","arguments":{...}}。如果不需要工具，返回 []。\n\n'
-        f"当前仓库路径：{state.get('repo_path', '')}\n\n"
-        f"用户问题：{_latest_user_question(state)}\n\n"
-        f"已有 observation：\n{_format_observation_messages(state)}\n"
-    )
-
-
-def _message_role(message: object) -> str:
-    if isinstance(message, dict):
-        return str(message.get("role", ""))
-    return str(getattr(message, "type", getattr(message, "role", "")))
-
-
-def _message_name(message: object) -> str:
-    if isinstance(message, dict):
-        return str(message.get("name", ""))
-    return str(getattr(message, "name", "") or "")
-
-
-def _message_content(message: object) -> str:
-    if isinstance(message, dict):
-        return str(message.get("content", ""))
-    return str(getattr(message, "content", ""))
-
-
-def _tool_messages(state: AgentGraphState) -> list[object]:
-    return [
-        message
-        for message in state.get("messages", [])
-        if _message_role(message) == "tool"
-    ]
-
-
-def _count_tool_messages(state: AgentGraphState, name: str) -> int:
-    return sum(1 for message in _tool_messages(state) if _message_name(message) == name)
-
-
-def _count_non_retrieval_tool_messages(state: AgentGraphState) -> int:
-    return sum(
-        1
-        for message in _tool_messages(state)
-        if _message_name(message) != "retrieve_context"
-    )
-
-
-def _format_observation_messages(state: AgentGraphState) -> str:
-    lines = []
-    for message in _tool_messages(state):
-        name = _message_name(message) or "tool"
-        lines.append(f"[{name}]\n{_message_content(message)}")
-    return "\n\n".join(lines) if lines else "无"
-
-
 def _parse_tool_calls(raw_json: str) -> list[dict[str, object]]:
-    """
-    输入:
-        raw_json: LLM 返回的 JSON 数组文本。
-    输出:
-        list[dict[str, object]]: 标准 tool_calls。
-    作用:
-        把模型输出约束为 execute_tools 可消费的结构。
-    为什么需要这个函数?
-        工具执行层不能直接信任模型输出，进入执行前需要做最小结构校验。
-    """
     try:
         parsed = json.loads(raw_json)
     except json.JSONDecodeError:
@@ -459,17 +263,6 @@ def _append_event(
     state: AgentGraphState,
     event: dict[str, object],
 ) -> AgentGraphState:
-    """
-    输入:
-        state: 当前 AgentGraphState。
-        event: 要追加的事件字典。
-    输出:
-        追加事件后的 AgentGraphState。
-    作用:
-        以不可变风格复制 state，并把新事件追加到 events 列表末尾。
-    为什么需要这个函数?
-        graph 节点都需要写事件；集中处理可以保证事件追加方式一致，避免误改原始 state。
-    """
     return {
         **update,
         "events": [*state.get("events", []), event],

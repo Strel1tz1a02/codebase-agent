@@ -6,6 +6,9 @@ def test_create_initial_state_sets_project_and_question():
         project_id="demo",
         repo_path="E:/repo",
         question="Where is the entry point?",
+        rag_index=None,
+        chat_model=None,
+        tool_executor=None,
     )
 
     assert state["project_id"] == "demo"
@@ -14,7 +17,7 @@ def test_create_initial_state_sets_project_and_question():
         {"role": "user", "content": "Where is the entry point?"}
     ]
     assert "context" not in state
-    assert state["tool_calls"] == []
+    assert state.get("tool_calls", []) == []
     assert state["retrieval_round"] == 0
     assert state["tool_round"] == 0
     assert state["max_retrieval_rounds"] == 2
