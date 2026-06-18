@@ -67,6 +67,7 @@ def format_tool_results(state: AgentGraphState) -> str:
         lines.append(f"[{name}]\n{_message_content(message)}")
     return "\n\n".join(lines) if lines else "无"
 
+
 def build_step_planning_prompt(state: AgentGraphState) -> str:
     """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定工具 JSON 或 answer。"""
     remaining_tool = _calc_remaining_tool_rounds(state)
@@ -93,15 +94,15 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
     if not has_tool_results:
         lines.append("1. 尚无任何信息：根据问题性质选择")
         lines.append("   - 纯知识问题、与仓库代码无关 → answer")
-        lines.append("   - 需了解仓库整体结构 → JSON，调用 repo_summary")
-        lines.append("   - 需搜索特定代码 → JSON，优先 search_code / read_file，需要语义召回时调用 retrieve_code")
+        lines.append("   - 需了解仓库整体结构 → JSON，选择可提供仓库总览的工具")
+        lines.append("   - 需搜索特定代码 → JSON，优先选择关键词搜索或读取文件工具，需要语义召回时选择检索工具")
     else:
         lines.append("1. 检查已有信息是否足以回答：")
         lines.append("   - 问题与代码实现有关 → 必须有 .py 源码验证，仅有 docs/ 或 .md 文档描述不算足够")
         lines.append("   - 问题仅询问设计思路或文档内容 → 文档描述即可回答")
     lines.append("2. 信息不足以准确回答：")
-    lines.append("   - 缺少代码验证（只有 docs 描述没有 .py 源码） → JSON，read_file 打开对应 .py 文件")
-    lines.append("   - 缺少代码内容 → JSON，优先 read_file / search_code，需要语义召回时调用 retrieve_code")
+    lines.append("   - 缺少代码验证（只有 docs 描述没有 .py 源码） → JSON，选择读取文件工具打开对应 .py 文件")
+    lines.append("   - 缺少代码内容 → JSON，优先选择读取文件或关键词搜索工具，需要语义召回时选择检索工具")
     if remaining_tool > 0:
         lines.append("   - 已有工具结果被截断(truncated) → JSON 加大 offset 继续读")
     lines.append("3. 剩余次数为 0 时只能输出 answer")

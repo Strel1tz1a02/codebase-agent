@@ -87,8 +87,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 def format_tool_descriptions() -> str:
     """将所有工具的说明格式化为 prompt 可用的文本块。"""
     lines = ["可用工具：", ""]
-    for name in ["repo_summary", "read_file", "search_code", "retrieve_code"]:
-        desc = TOOL_DESCRIPTIONS.get(name, "")
+    for tool in build_tools():
+        desc = TOOL_DESCRIPTIONS.get(tool.name, str(getattr(tool, "description", "")))# 从对象 tool 上获取属性 description 的值
         if desc:
             lines.append(f"  {desc}")
             lines.append("")
