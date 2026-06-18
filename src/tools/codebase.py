@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from src.rag.indexing import build_project_index
 from src.rag.retrieval import retrieve_from_index
-from src.utils.ignore import should_ignore_dir, should_ignore_file
+from src.core.ignore import should_ignore_dir, should_ignore_file
 
 
 SEARCHABLE_SUFFIXES = {".py", ".md", ".txt", ".json"}

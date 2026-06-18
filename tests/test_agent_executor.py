@@ -76,7 +76,7 @@ class TestAgentExecutor(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                match["path"] == "src/runtime/runs.py"
+                match["path"] == "src/runtime/service.py"
                 and match["text"] == "class RuntimeService:"
                 and isinstance(match["line"], int)
                 for match in result.output["matches"]
@@ -123,7 +123,7 @@ class TestAgentExecutor(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.output["scope"], "all")
         paths = [str(match["path"]) for match in result.output["matches"]]
-        self.assertIn("src/runtime/runs.py", paths)
+        self.assertIn("src/runtime/service.py", paths)
         self.assertTrue(any(path.startswith("tests/") for path in paths))
 
     def test_retrieve_code_is_registered(self) -> None:
@@ -133,7 +133,7 @@ class TestAgentExecutor(unittest.TestCase):
         repo_path = str(Path(__file__).resolve().parent.parent)
         fake_hit_dicts = [
             {
-                "relative_path": "src/runtime/runs.py",
+                "relative_path": "src/runtime/service.py",
                 "start_line": 9,
                 "end_line": 70,
                 "content": "class RuntimeService:\n    pass\n",

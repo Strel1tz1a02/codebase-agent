@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# V1 默认忽略目录：这些目录通常是依赖、缓存或构建产物，不属于业务源码。
+# 默认忽略目录：这些目录通常是依赖、缓存或构建产物，不属于业务源码。
 DEFAULT_IGNORED_DIRS = {
     ".git",
     ".pytest_cache",
@@ -16,12 +16,12 @@ DEFAULT_IGNORED_DIRS = {
     "build",
 }
 
-# V1 默认忽略文件：与源码分析无关的系统噪声文件。
+# 默认忽略文件：与源码分析无关的系统噪声文件。
 DEFAULT_IGNORED_FILES = {
     ".DS_Store",  # macOS Finder 自动生成的目录信息文件。
 }
 
-# V1 默认忽略后缀：常见临时/生成文件后缀。
+# 默认忽略后缀：常见临时/生成文件后缀。
 DEFAULT_IGNORED_SUFFIXES = {
     ".pyc",  # Python 编译后的字节码文件。
     ".log",  # 日志文件，通常用于运行记录，不是源码。
@@ -59,4 +59,3 @@ def should_ignore_file(file_path: str | Path) -> bool:
     if path.suffix.lower() in DEFAULT_IGNORED_SUFFIXES:
         return True
     return False
-

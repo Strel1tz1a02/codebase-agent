@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.utils.file_io import read_utf8_text_file
-from src.utils.ignore import should_ignore_dir, should_ignore_file
+from src.core.ignore import should_ignore_dir, should_ignore_file
 
 SUPPORTED_TEXT_SUFFIXES = {
     ".py",
@@ -53,7 +52,7 @@ def load_code_files(repo_path: str) -> list[dict[str, object]]:
                 continue
 
             try:
-                content = read_utf8_text_file(file_path)
+                content = file_path.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
 
