@@ -73,6 +73,7 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
     """构造 plan_next_step 节点的 prompt，让 LLM 根据已有信息一步决定 retrieve / 工具JSON / answer。"""
     remaining_retrieval, remaining_tool = _calc_remaining_rounds(state)
     has_retrieval = _count_tool_messages(state, "retrieve_context") > 0
+    has_tool_results = len(_tool_messages(state)) > 0
     tool_results_text = format_tool_results(state)
     repo_path = str(state.get("repo_path", ""))
 
@@ -80,18 +81,27 @@ def build_step_planning_prompt(state: AgentGraphState) -> str:
         "你是 codebase-agent 的流程规划节点。",
         "",
         "只能输出以下三种之一：",
-        "1. retrieve                     —— 需要从当前仓库获取代码上下文（RAG检索）",
+        "1. retrieve                     —— 语义检索兜底，仅当工具调用(search_code/read_file)无法定位时使用",
         "2. [{\"name\":\"...\",\"arguments\":...}] —— JSON数组，指定要调用的工具",
-        "3. answer                       —— 已有信息足够，准备生成回答",
+        "3. answer                       —— 信息足够，准备生成回答",
         "",
-        "决策规则（按优先级）：",
+        "决策规则：",
     ]
-    if not has_retrieval and remaining_retrieval > 0:
-        lines.append("1. 当前无任何检索结果，优先输出 retrieve")
+    if not has_retrieval and not has_tool_results:
+        lines.append("1. 尚无任何信息：根据问题性质选择")
+        lines.append("   - 纯知识问题、与仓库代码无关 → answer")
+        lines.append("   - 需了解仓库整体结构 → JSON，调用 repo_summary")
+        lines.append("   - 需搜索特定代码 → 优先 JSON（search_code / read_file），找不到时再用 retrieve")
     else:
-        lines.append("1. 已有检索结果，检查以下信息是否足以回答")
-    lines.append("2. 信息不足且剩余工具次数 > 0 → 输出 JSON 数组")
-    lines.append("3. 信息已经足够 → 输出 answer")
+        lines.append("1. 检查已有信息是否足以回答：")
+        lines.append("   - 问题与代码实现有关 → 必须有 .py 源码验证，仅有 docs/ 或 .md 文档描述不算足够")
+        lines.append("   - 问题仅询问设计思路或文档内容 → 文档描述即可回答")
+    lines.append("2. 信息不足以准确回答：")
+    lines.append("   - 缺少代码验证（只有 docs 描述没有 .py 源码） → JSON，read_file 打开对应 .py 文件")
+    lines.append("   - 缺少代码内容 → 优先 JSON（read_file / search_code），找不到时再用 retrieve")
+    if remaining_tool > 0:
+        lines.append("   - 已有工具结果被截断(truncated) → JSON 加大 offset 继续读")
+    lines.append("3. 剩余次数为 0 时只能输出 answer")
     lines.append("")
     lines.append(f"剩余检索次数：{remaining_retrieval}    剩余工具调用次数：{remaining_tool}")
     if remaining_tool == 0:
@@ -119,6 +129,8 @@ def build_answer_prompt(state: AgentGraphState) -> str:
         "回答要求：\n"
         "- 引用时标注文件路径和行号，例如：src/graph/nodes.py:12-34\n"
         "- 分析代码结构时给出层次清晰的分点说明\n"
+        "- docs/*.md 是设计文档，可能与实际代码不一致。优先以 .py 源码为准，文档仅作参考\n"
+        "- 如果只有文档描述没有源码验证，标注「以下基于文档描述，未经源码验证」\n"
         "- 如果上下文不足以准确回答，明确说明缺少哪些信息\n"
         "- 禁止编造上下文中不存在的内容\n\n"
         f"用户问题：{latest_user_question(state)}\n\n"

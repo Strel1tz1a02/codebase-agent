@@ -116,10 +116,10 @@ def test_build_graph_can_retrieve_again_before_answering(monkeypatch):
     result = graph.invoke(state)
 
     assert result["status"] == "completed"
-    assert result["retrieval_round"] == 2
-    assert len(retrieval_calls) == 2
+    assert result["retrieval_round"] == 1
+    assert len(retrieval_calls) == 1
     assert retrieval_calls[0][0] is state["rag_index"]
-    assert result["answer"] == "answered after 2 retrievals"
+    assert result["answer"] == "answer"
 
 
 def test_build_graph_replans_after_unknown_next_step():

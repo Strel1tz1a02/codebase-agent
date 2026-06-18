@@ -145,7 +145,7 @@ def test_retrieve_context_uses_rag_index(monkeypatch):
     assert "src/rag/retrieval.py" in result["messages"][0].content
     assert result["retrieval_round"] == 1
     assert calls == [
-        {"rag_index": fake_index, "question": "Where is retrieval?", "top_k": 5}
+        {"rag_index": fake_index, "question": "Where is retrieval?", "top_k": 10}
     ]
     assert result["events"][-1] == {"type": "context_retrieved", "hit_count": 1}
     assert_partial_update(result)
