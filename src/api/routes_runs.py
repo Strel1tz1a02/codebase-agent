@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
 
+from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateRunRequest, RunEventListResponse, RunEventResponse, RunResponse
+from src.core.errors import ProjectNotFoundError, RunNotFoundError, SessionNotFoundError
 from src.runtime.events import RunEvent
 from src.runtime.runs import Run
 
@@ -38,8 +40,8 @@ def register_run_routes(app: FastAPI) -> None:
     ) -> RunResponse:
         try:
             run = app.state.runtime.ask(project_id, session_id, request.question)
-        except KeyError as exc:
-            raise app.state.not_found_from_key_error(exc) from exc
+        except (ProjectNotFoundError, SessionNotFoundError, RunNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         return run_to_response(run)
@@ -52,8 +54,8 @@ def register_run_routes(app: FastAPI) -> None:
         try:
             session = app.state.runtime.store.get_project(project_id).get_session(session_id)
             run = session.get_run(run_id)
-        except KeyError as exc:
-            raise app.state.not_found_from_key_error(exc) from exc
+        except (ProjectNotFoundError, SessionNotFoundError, RunNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
         return run_to_response(run)
 
     @app.get(
@@ -69,6 +71,6 @@ def register_run_routes(app: FastAPI) -> None:
             session = app.state.runtime.store.get_project(project_id).get_session(session_id)
             run = session.get_run(run_id)
             events = run.list_events()
-        except KeyError as exc:
-            raise app.state.not_found_from_key_error(exc) from exc
+        except (ProjectNotFoundError, SessionNotFoundError, RunNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
         return RunEventListResponse(events=[event_to_response(event) for event in events])

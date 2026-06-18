@@ -21,6 +21,7 @@ def test_create_app_uses_runtime_service_only():
 
     assert app.state.runtime is runtime
     assert not hasattr(app.state, "project_runtime")
+    assert not hasattr(app.state, "not_found_from_key_error")
 
 
 def test_ui_page_serves_static_app():

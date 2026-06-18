@@ -90,3 +90,19 @@ def test_get_run_and_events_endpoints(tmp_path):
         "graph_event",
         "graph_finish",
     ]
+
+
+def test_get_run_returns_404_for_unknown_run(tmp_path):
+    """验证查询未知 run 时返回统一 404 JSON 响应。"""
+    runtime = RuntimeService()
+    project = runtime.create_project("demo", str(tmp_path))
+    session = runtime.create_session(project.project_id)
+    app = create_app(runtime=runtime)
+    client = TestClient(app)
+
+    response = client.get(
+        f"/projects/{project.project_id}/sessions/{session.session_id}/runs/missing"
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "run not found: missing"}

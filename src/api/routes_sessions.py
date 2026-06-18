@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from uuid import uuid4
 
+from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateSessionResponse
+from src.core.errors import ProjectNotFoundError, SessionNotFoundError
 from src.runtime.sessions import RuntimeSession
 
 def runtime_session_to_response(session: RuntimeSession) -> CreateSessionResponse:
@@ -23,8 +25,8 @@ def register_session_routes(app: FastAPI) -> None:
         try:
             session = RuntimeSession(session_id=uuid4().hex)
             app.state.runtime.store.get_project(project_id).add_session(session)
-        except KeyError as exc:
-            raise app.state.not_found_from_key_error(exc) from exc
+        except (ProjectNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
         return runtime_session_to_response(session)
 
     @app.get(
@@ -34,6 +36,6 @@ def register_session_routes(app: FastAPI) -> None:
     def get_session(project_id: str, session_id: str) -> CreateSessionResponse:
         try:
             session = app.state.runtime.store.get_project(project_id).get_session(session_id)
-        except KeyError as exc:
-            raise app.state.not_found_from_key_error(exc) from exc
+        except (ProjectNotFoundError, SessionNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
         return runtime_session_to_response(session)
