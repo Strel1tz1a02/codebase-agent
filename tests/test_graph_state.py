@@ -9,6 +9,8 @@ def test_create_initial_state_sets_project_and_question():
         rag_index=None,
         chat_model=None,
         tool_executor=None,
+        memory_summary="remembered facts",
+        recent_history="user: previous",
     )
 
     assert state["project_id"] == "demo"
@@ -24,3 +26,5 @@ def test_create_initial_state_sets_project_and_question():
     assert state["status"] == "running"
     assert state["reason"] == ""
     assert state["events"] == []
+    assert state["memory_summary"] == "remembered facts"
+    assert state["recent_history"] == "user: previous"

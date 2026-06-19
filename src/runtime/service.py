@@ -8,11 +8,12 @@ from src.core.config import AppConfig
 from src.core.errors import RagIndexNotReadyError
 from src.graph.builder import build_graph
 from src.graph.state import create_initial_state
+from src.memory.prompts import format_recent_history
+from src.memory.summary import update_memory_summary
 from src.models.chat import build_chat_model
 from src.rag.indexing import build_project_index
 from src.rag.schemas import RagIndex
 from src.runtime.events import RunEvent
-from src.runtime.memory import build_memory_messages
 from src.runtime.run import Run
 from src.runtime.session import RuntimeSession
 from src.runtime.store import RuntimeStore
@@ -165,6 +166,7 @@ class RuntimeService:
         session = project.get_session(session_id)
         run = self._run_graph(project, session, question)
         session.add_run(run)
+        session.memory_summary = update_memory_summary(session, self.chat_model)
         self.store.save()
         return run
 
@@ -187,7 +189,6 @@ class RuntimeService:
 
         run = Run(
             run_id=uuid4().hex,
-            session_id=session.session_id,
             question=question,
             status="running",
         )
@@ -200,8 +201,9 @@ class RuntimeService:
             rag_index=index,
             chat_model=self.chat_model,
             tool_executor=self.tool_executor,
+            memory_summary=session.memory_summary,
+            recent_history=format_recent_history(session),
         )
-        state["messages"] = build_memory_messages(session, run.question)
         result = self.graph.invoke(state)
 
         for event in result.get("events", []):

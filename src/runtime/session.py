@@ -24,6 +24,7 @@ class RuntimeSession:
     """
 
     session_id: str
+    memory_summary: str = ""
     runs: dict[str, Run] = field(default_factory=dict)
 
     def add_run(self, run: Run) -> None:
@@ -39,6 +40,7 @@ class RuntimeSession:
     def to_payload(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
+            "memory_summary": self.memory_summary,
             "runs": [run.to_payload() for run in self.runs.values()],
         }
 
@@ -46,7 +48,10 @@ class RuntimeSession:
     def from_payload(cls, payload: dict[str, Any]) -> RuntimeSession:
         from src.runtime.run import Run
 
-        session = cls(session_id=str(payload.get("session_id", "")))
+        session = cls(
+            session_id=str(payload.get("session_id", "")),
+            memory_summary=str(payload.get("memory_summary", "")),
+        )
         for item in payload.get("runs", []):
             if isinstance(item, dict):
                 session.add_run(Run.from_payload(item))

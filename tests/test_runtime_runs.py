@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from src.core.config import AppConfig, ModelConfig
 from src.core.errors import RagIndexNotReadyError, RunNotFoundError, SessionNotFoundError
@@ -17,7 +17,7 @@ def test_runtime_ask_creates_run_for_session(tmp_path):
             return {"status": "completed", "answer": "", "events": []}
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -26,7 +26,6 @@ def test_runtime_ask_creates_run_for_session(tmp_path):
 
     assert project.sessions[session.session_id] is session
     assert session.runs[run.run_id] is run
-    assert run.session_id == session.session_id
     assert run.question == "Where is the entry point?"
     assert run.status == "completed"
     assert run.answer == ""
@@ -38,7 +37,7 @@ def test_runtime_records_run_events(tmp_path):
             return {"status": "completed", "answer": "", "events": []}
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -46,7 +45,6 @@ def test_runtime_records_run_events(tmp_path):
 
     event = runtime.append_event(session, run.run_id, "custom_event", {"ok": True})
 
-    assert event.run_id == run.run_id
     assert event.event_type == "custom_event"
     assert event.payload == {"ok": True}
     assert run.events[-1] is event
@@ -54,14 +52,12 @@ def test_runtime_records_run_events(tmp_path):
 
 
 def test_runtime_reads_run_and_events_by_owner_ids(tmp_path):
-    """验证 RuntimeService 对外按 project/session/run ID 读取 run 和事件。"""
-
     class FakeGraph:
         def invoke(self, state):
             return {"status": "completed", "answer": "", "events": []}
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -83,7 +79,7 @@ def test_runtime_validates_session_and_run_exist(tmp_path):
             return {"status": "completed", "answer": "", "events": []}
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -111,7 +107,7 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
             }
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -134,8 +130,7 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
     ]
 
 
-def test_runtime_injects_session_history_into_graph_messages(tmp_path):
-    """验证同一 session 的历史问答会被注入下一轮 graph messages。"""
+def test_runtime_injects_session_history_as_recent_history(tmp_path):
     graph_calls = []
 
     class FakeGraph:
@@ -148,7 +143,7 @@ def test_runtime_injects_session_history_into_graph_messages(tmp_path):
             }
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     runtime.index_project(project.project_id)
     session = runtime.create_session(project.project_id)
@@ -160,10 +155,46 @@ def test_runtime_injects_session_history_into_graph_messages(tmp_path):
         {"role": "user", "content": "First question?"}
     ]
     assert graph_calls[1]["messages"] == [
-        {"role": "user", "content": "First question?"},
-        {"role": "assistant", "content": "answer 1"},
-        {"role": "user", "content": "Second question?"},
+        {"role": "user", "content": "Second question?"}
     ]
+    assert "user: First question?" in graph_calls[1]["recent_history"]
+    assert "assistant: answer 1" in graph_calls[1]["recent_history"]
+    assert "Second question?" not in graph_calls[1]["recent_history"]
+
+
+def test_runtime_updates_and_injects_session_memory_summary(tmp_path):
+    graph_calls = []
+
+    class FakeSummaryResponse:
+        content = "user name is L"
+
+    class FakeChatModel:
+        def invoke(self, prompt):
+            return FakeSummaryResponse()
+
+    class FakeGraph:
+        def invoke(self, state):
+            graph_calls.append(state)
+            return {
+                "status": "completed",
+                "answer": "hello L" if len(graph_calls) == 1 else "your name is L",
+                "events": [],
+            }
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=FakeChatModel())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+
+    runtime.ask(project.project_id, session.session_id, "my name is L")
+    runtime.ask(project.project_id, session.session_id, "what is my name?")
+
+    assert "user name is L" in session.memory_summary
+    assert graph_calls[0]["memory_summary"] == ""
+    assert "user name is L" in graph_calls[1]["memory_summary"]
+    assert "user: my name is L" in graph_calls[1]["recent_history"]
+    assert "what is my name?" not in graph_calls[1]["recent_history"]
 
 
 def test_runtime_injects_chat_model_into_graph_state(tmp_path):
@@ -205,18 +236,16 @@ def test_runtime_builds_chat_model_when_api_key_env_exists(monkeypatch):
 
 
 def test_runtime_passes_app_config_when_indexing_project(monkeypatch, tmp_path):
-    """验证 RuntimeService 构建项目索引时会传递自身持有的 AppConfig。"""
     captured_calls = []
     fake_index = object()
 
     def fake_build_project_index(project_id, repo_path, config=None):
-        """记录索引构建入参，并返回一个最小可用的索引替身。"""
         captured_calls.append((project_id, repo_path, config))
         return fake_index
 
     monkeypatch.setattr(runtime_service, "build_project_index", fake_build_project_index)
     config = AppConfig()
-    runtime = RuntimeService(graph=object(), config=config)
+    runtime = RuntimeService(graph=object(), config=config, chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
 
     runtime.index_project(project.project_id)
@@ -226,7 +255,7 @@ def test_runtime_passes_app_config_when_indexing_project(monkeypatch, tmp_path):
 
 
 def test_runtime_ask_requires_indexed_project(tmp_path):
-    runtime = RuntimeService()
+    runtime = RuntimeService(graph=object(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     session = runtime.create_session(project.project_id)
 
@@ -240,7 +269,7 @@ def test_runtime_get_methods_require_owner_scope(tmp_path):
             return {"status": "completed", "answer": "", "events": []}
 
     _write_repo_file(tmp_path)
-    runtime = RuntimeService(graph=FakeGraph())
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
     project = runtime.create_project("demo", str(tmp_path))
     other_project = runtime.create_project("other", str(tmp_path))
     runtime.index_project(project.project_id)
@@ -258,8 +287,7 @@ def test_runtime_get_methods_require_owner_scope(tmp_path):
 
 
 def test_runtime_uses_ask_as_public_run_entrypoint():
-    runtime = RuntimeService(graph=object())
+    runtime = RuntimeService(graph=object(), chat_model=object())
 
     assert hasattr(runtime, "ask")
     assert hasattr(runtime, "_run_graph")
-

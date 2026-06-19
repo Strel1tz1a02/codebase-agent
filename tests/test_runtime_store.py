@@ -67,7 +67,7 @@ def test_runtime_store_does_not_restore_unpersisted_rag_index(tmp_path):
 
 def test_runtime_objects_convert_to_and_from_payload(tmp_path):
     project = Project(project_id="project-1", name="demo", repo_path=str(tmp_path))
-    session = RuntimeSession(session_id="session-1")
+    session = RuntimeSession(session_id="session-1", memory_summary="用户信息：\n- 用户自称 L。")
     run = Run(
         run_id="run-1",
         session_id=session.session_id,
@@ -85,6 +85,7 @@ def test_runtime_objects_convert_to_and_from_payload(tmp_path):
 
     assert restored.project_id == project.project_id
     assert restored.repo_path == str(tmp_path)
+    assert restored_session.memory_summary == "用户信息：\n- 用户自称 L。"
     assert restored_run.answer == "main is in src/main.py"
     assert restored_run.events[0].payload == {"ok": True}
 

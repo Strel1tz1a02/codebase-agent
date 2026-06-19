@@ -24,6 +24,8 @@ class AgentGraphState(TypedDict, total=False):
     messages: Annotated[list[dict[str, str]], add_messages]
     next_step: str #用于规划节点的输出，指导后续检索、工具调用或回答
     tool_calls: list[dict[str, object]]
+    memory_summary: str
+    recent_history: str
 
     tool_round: int
     invalid_plan_round: int
@@ -47,7 +49,9 @@ def create_initial_state(
     question: str,
     rag_index: object,
     chat_model: object,
-    tool_executor:callable
+    tool_executor: callable,
+    memory_summary: str = "",
+    recent_history: str = "",
 ) -> AgentGraphState:
     """
     输入:
@@ -68,6 +72,8 @@ def create_initial_state(
         project_id=project_id,
         repo_path=repo_path,
         messages=[{"role": "user", "content": question}],
+        memory_summary=memory_summary,
+        recent_history=recent_history,
 
         tool_round=0,
         invalid_plan_round=0,
@@ -80,6 +86,6 @@ def create_initial_state(
         events=[],
         rag_index=rag_index,
         chat_model=chat_model,
-        tool_executor=tool_executor
+        tool_executor=tool_executor,
     )
     return state

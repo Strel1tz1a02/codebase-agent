@@ -234,6 +234,9 @@ Desktop.ini
 # local runtime config (contains machine-specific values)
 .codebase_agent/config.json
 .codebase_agent/index.json
+.codebase_agent/runtime_store.json
 
 # RAG vector store data (auto-generated)
 .codebase_agent/vectorstores/
+
+

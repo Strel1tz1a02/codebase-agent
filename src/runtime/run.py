@@ -26,7 +26,6 @@ class Run:
     """
 
     run_id: str
-    session_id: str = ""
     question: str = ""
     status: Literal["queued", "running", "completed", "failed", "stopped"] = "queued"
     answer: str = ""
@@ -44,7 +43,6 @@ class Run:
     def to_payload(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
-            "session_id": self.session_id,
             "question": self.question,
             "status": self.status,
             "answer": self.answer,
@@ -56,7 +54,6 @@ class Run:
     def from_payload(cls, payload: dict[str, Any]) -> Run:
         run = cls(
             run_id=str(payload.get("run_id", "")),
-            session_id=str(payload.get("session_id", "")),
             question=str(payload.get("question", "")),
             status=str(payload.get("status", "queued")),  # type: ignore[arg-type]
             answer=str(payload.get("answer", "")),
