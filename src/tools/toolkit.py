@@ -8,7 +8,14 @@ from langchain_core.tools import BaseTool
 
 from src.tools.codebase import repo_summary_tool, retrieve_code_tool, search_code_tool
 from src.tools.filesystem import read_file_tool
-from src.tools.history import read_history_run_tool
+from src.tools.history import READ_HISTORY_RUN_TOOL_NAME, read_history_run, read_history_run_tool
+
+
+@dataclass
+class ToolContext:
+    session: object | None = None
+    project: object | None = None
+    repo_path: str = ""
 
 
 @dataclass
@@ -55,7 +62,30 @@ def format_tool_descriptions() -> str:
     return "\n".join(lines)
 
 
-def execute_tool(tool_name: str, arguments: dict[str, object]) -> ToolResult:
+def execute_tool(
+    tool_name: str,
+    arguments: dict[str, object],
+    context: ToolContext | None = None,
+) -> ToolResult:
+    if tool_name == READ_HISTORY_RUN_TOOL_NAME:
+        if context is None or context.session is None:
+            return ToolResult(
+                ok=False,
+                tool_name=tool_name,
+                output={},
+                error="session context required",
+            )
+        try:
+            output = read_history_run(context.session, str(arguments.get("run_id", "")))  # type: ignore[arg-type]
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                tool_name=tool_name,
+                output={},
+                error=str(exc),
+            )
+        return ToolResult(ok=True, tool_name=tool_name, output=output, error="")
+
     tool = TOOL_REGISTRY.get(tool_name)
 
     if tool is None:

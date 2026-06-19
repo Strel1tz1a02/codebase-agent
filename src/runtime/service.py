@@ -17,7 +17,7 @@ from src.runtime.events import RunEvent
 from src.runtime.run import Run
 from src.runtime.session import RuntimeSession
 from src.runtime.store import RuntimeStore
-from src.tools.toolkit import execute_tool
+from src.tools.toolkit import ToolContext, execute_tool
 
 if TYPE_CHECKING:
     from src.runtime.project import Project
@@ -200,7 +200,15 @@ class RuntimeService:
             question=run.question,
             rag_index=index,
             chat_model=self.chat_model,
-            tool_executor=self.tool_executor,
+            tool_executor=lambda tool_name, arguments: self.tool_executor(
+                tool_name,
+                arguments,
+                context=ToolContext(
+                    session=session,
+                    project=project,
+                    repo_path=project.repo_path,
+                ),
+            ),# graph层不参与给context参数，所以graph层仍然是2参数版本的executor，context 在run层喂进去
             memory_summary=session.memory_summary,
             recent_history=format_recent_history(session),
         )

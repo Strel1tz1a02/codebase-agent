@@ -110,6 +110,7 @@ def test_plan_next_step_uses_bound_tool_calls_when_supported():
         "read_file",
         "search_code",
         "retrieve_code",
+        "read_history_run",
     }
     assert "Read graph nodes" in model.prompts[0]
     assert_partial_update(result)

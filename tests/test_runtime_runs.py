@@ -4,6 +4,7 @@ from src.core.config import AppConfig, ModelConfig
 from src.core.errors import RagIndexNotReadyError, RunNotFoundError, SessionNotFoundError
 import src.runtime.service as runtime_service
 from src.runtime.service import RuntimeService
+from src.tools.history import READ_HISTORY_RUN_TOOL_NAME
 
 
 def _write_repo_file(tmp_path):
@@ -195,6 +196,39 @@ def test_runtime_updates_and_injects_session_memory_summary(tmp_path):
     assert "user name is L" in graph_calls[1]["memory_summary"]
     assert "user: my name is L" in graph_calls[1]["recent_history"]
     assert "what is my name?" not in graph_calls[1]["recent_history"]
+
+
+def test_runtime_injects_session_context_tool_executor(tmp_path):
+    graph_calls = []
+
+    class FakeGraph:
+        def invoke(self, state):
+            graph_calls.append(state)
+            return {
+                "status": "completed",
+                "answer": f"answer {len(graph_calls)}",
+                "events": [],
+            }
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=object())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+
+    first_run = runtime.ask(project.project_id, session.session_id, "First question?")
+    runtime.ask(project.project_id, session.session_id, "Second question?")
+
+    result = graph_calls[1]["tool_executor"](
+        READ_HISTORY_RUN_TOOL_NAME,
+        {"run_id": first_run.run_id},
+    )
+
+    assert result.ok is True
+    assert result.output["session_id"] == session.session_id
+    assert result.output["run_id"] == first_run.run_id
+    assert result.output["question"] == "First question?"
+    assert result.output["answer"] == "answer 1"
 
 
 def test_runtime_injects_chat_model_into_graph_state(tmp_path):
