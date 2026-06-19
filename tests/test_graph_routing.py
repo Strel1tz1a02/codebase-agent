@@ -12,6 +12,7 @@ from src.graph.routing import (
 def test_route_after_plan_selects_tools_or_answer():
     assert route_after_plan({"next_step": "execute_tools"}) == "execute_tools"
     assert route_after_plan({"next_step": "answer"}) == "synthesize_answer"
+    assert route_after_plan({"status": "failed", "reason": "llm_error: quota exceeded"}) == "finish"
 
 
 def test_route_after_plan_retries_unknown_next_step_until_limit():

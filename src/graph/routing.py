@@ -15,6 +15,9 @@ def route_after_plan(state: AgentGraphState) -> str:
         根据 next_step 选择工具执行或直接回答路径，并做轮次上限保护。
         无法识别的规划结果会先有限重试，超过上限后兜底进入回答生成，避免死循环。
     """
+    if str(state.get("status", "")).strip() == "failed":
+        return "finish"
+
     next_step = str(state.get("next_step", "answer"))
     if next_step == "execute_tools":
         if int(state.get("tool_round", 0)) >= int(state.get("max_tool_rounds", 3)):

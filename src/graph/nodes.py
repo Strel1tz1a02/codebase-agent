@@ -4,6 +4,7 @@ import json
 
 from langchain_core.messages import SystemMessage, ToolMessage
 
+from src.graph.error_updates import llm_error_update
 from src.graph.prompts import build_answer_prompt, build_step_planning_prompt
 from src.graph.state import AgentGraphState
 from src.tools.toolkit import ToolResult
@@ -14,7 +15,10 @@ def plan_next_step(state: AgentGraphState) -> AgentGraphState:
     raw_response = ""
 
     if _has_invoke(chat_model):
-        response = chat_model.invoke(build_step_planning_prompt(state))  # type: ignore[union-attr]
+        try:
+            response = chat_model.invoke(build_step_planning_prompt(state))  # type: ignore[union-attr]
+        except Exception as exc:
+            return llm_error_update(state, "plan_next_step", exc)
         tool_calls = _extract_bound_tool_calls(response)
         if tool_calls:
             return _planned_tool_call_update(state, tool_calls)
@@ -90,7 +94,10 @@ def execute_tools(state: AgentGraphState) -> AgentGraphState:
 def synthesize_answer(state: AgentGraphState) -> AgentGraphState:
     chat_model = state.get("chat_model")
     if _has_invoke(chat_model):
-        answer = _extract_model_content(chat_model.invoke(build_answer_prompt(state)))  # type: ignore[union-attr]
+        try:
+            answer = _extract_model_content(chat_model.invoke(build_answer_prompt(state)))  # type: ignore[union-attr]
+        except Exception as exc:
+            return llm_error_update(state, "synthesize_answer", exc, answer="")
     else:
         answer = "Graph execution completed."
 
@@ -102,6 +109,16 @@ def synthesize_answer(state: AgentGraphState) -> AgentGraphState:
 
 
 def validate_answer(state: AgentGraphState) -> AgentGraphState:
+    if str(state.get("status", "")).strip() == "failed":
+        return _append_event(
+            {
+                "status": "failed",
+                "reason": str(state.get("reason", "")),
+            },
+            state,
+            {"type": "answer_validated", "valid": False},
+        )
+
     valid = bool(str(state.get("answer", "")).strip())
     reason = "" if valid else "empty answer"
 

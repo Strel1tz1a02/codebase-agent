@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from src.runtime.session import RuntimeSession
+
+
+@dataclass(frozen=True)
+class MemorySummaryUpdate:
+    summary: str
+    error: str = ""
 
 
 def summarize_latest_run(session: RuntimeSession, chat_model: object) -> str:
@@ -19,9 +27,12 @@ def summarize_latest_run(session: RuntimeSession, chat_model: object) -> str:
     return f"[run_id={getattr(latest_run, 'run_id', '')}]\n{summary}"
 
 
-def update_memory_summary(session: RuntimeSession, chat_model: object) -> str:
-    new_summary = summarize_latest_run(session, chat_model)
-    return append_memory_summary(session.memory_summary, new_summary)
+def update_memory_summary(session: RuntimeSession, chat_model: object) -> MemorySummaryUpdate:
+    try:
+        new_summary = summarize_latest_run(session, chat_model)
+    except Exception as exc:
+        return MemorySummaryUpdate(summary=session.memory_summary.strip(), error=str(exc) or exc.__class__.__name__)
+    return MemorySummaryUpdate(summary=append_memory_summary(session.memory_summary, new_summary))
 
 
 def append_memory_summary(previous_summary: str, new_summary: str) -> str:

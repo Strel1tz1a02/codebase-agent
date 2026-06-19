@@ -24,6 +24,16 @@ class RecordingInvokeModel:
         return FakeChatResponse(self.response)
 
 
+class RaisingInvokeModel:
+    def __init__(self, error):
+        self.error = error
+        self.prompts = []
+
+    def invoke(self, prompt):
+        self.prompts.append(prompt)
+        raise self.error
+
+
 class FakeToolCallResponse:
     def __init__(self, tool_calls=None, content=""):
         self.tool_calls = tool_calls or []
@@ -81,6 +91,21 @@ def test_plan_next_step_selects_answer():
     result = plan_next_step(state)
 
     assert result["next_step"] == "answer"
+    assert_partial_update(result)
+
+
+def test_plan_next_step_reports_llm_error_without_empty_answer():
+    state = _make_state("Where is main?", RaisingInvokeModel(RuntimeError("quota exceeded")))
+
+    result = plan_next_step(state)
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "llm_error: quota exceeded"
+    assert result["events"][-1] == {
+        "type": "llm_error",
+        "stage": "plan_next_step",
+        "error": "quota exceeded",
+    }
     assert_partial_update(result)
 
 
@@ -237,6 +262,36 @@ def test_validate_answer_fails_empty_answer():
     assert result["status"] == "failed"
     assert result["reason"] == "empty answer"
     assert result["events"][-1] == {"type": "answer_validated", "valid": False}
+    assert_partial_update(result)
+
+
+def test_validate_answer_preserves_existing_failure_reason():
+    state = _make_state("Where is main?")
+    state["status"] = "failed"
+    state["reason"] = "llm_error: quota exceeded"
+    state["answer"] = ""
+
+    result = validate_answer(state)
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "llm_error: quota exceeded"
+    assert result["events"][-1] == {"type": "answer_validated", "valid": False}
+    assert_partial_update(result)
+
+
+def test_synthesize_answer_reports_llm_error():
+    state = _make_state("Where is main?", RaisingInvokeModel(RuntimeError("quota exceeded")))
+
+    result = synthesize_answer(state)
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "llm_error: quota exceeded"
+    assert result["answer"] == ""
+    assert result["events"][-1] == {
+        "type": "llm_error",
+        "stage": "synthesize_answer",
+        "error": "quota exceeded",
+    }
     assert_partial_update(result)
 
 

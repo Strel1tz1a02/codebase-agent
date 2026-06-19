@@ -198,6 +198,28 @@ def test_runtime_updates_and_injects_session_memory_summary(tmp_path):
     assert "what is my name?" not in graph_calls[1]["recent_history"]
 
 
+def test_runtime_records_memory_summary_update_error(tmp_path):
+    class FakeGraph:
+        def invoke(self, state):
+            return {"status": "completed", "answer": "ok", "events": []}
+
+    class FailingSummaryModel:
+        def invoke(self, prompt):
+            raise RuntimeError("quota exceeded")
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph(), chat_model=FailingSummaryModel())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+
+    run = runtime.ask(project.project_id, session.session_id, "remember this")
+
+    assert session.memory_summary == ""
+    assert run.events[-1].event_type == "memory_summary_failed"
+    assert run.events[-1].payload == {"error": "quota exceeded"}
+
+
 def test_runtime_injects_session_context_tool_executor(tmp_path):
     graph_calls = []
 

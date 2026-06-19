@@ -166,7 +166,16 @@ class RuntimeService:
         session = project.get_session(session_id)
         run = self._run_graph(project, session, question)
         session.add_run(run)
-        session.memory_summary = update_memory_summary(session, self.chat_model)
+        memory_update = update_memory_summary(session, self.chat_model)
+        session.memory_summary = memory_update.summary
+        if memory_update.error:
+            run.add_event(
+                RunEvent(
+                    event_id=uuid4().hex,
+                    event_type="memory_summary_failed",
+                    payload={"error": memory_update.error},
+                )
+            )
         self.store.save()
         return run
 

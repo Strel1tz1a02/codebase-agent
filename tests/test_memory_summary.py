@@ -53,10 +53,25 @@ def test_update_memory_summary_appends_new_llm_summary():
     session.runs["run-1"] = SimpleNamespace(run_id="run-1", question="my name is L", answer="hello L")
     model = RecordingSummaryModel("user said their name is L.")
 
-    summary = update_memory_summary(session, model)
+    update = update_memory_summary(session, model)
 
-    assert summary == "existing summary.\n\n[run_id=run-1]\nuser said their name is L."
+    assert update.summary == "existing summary.\n\n[run_id=run-1]\nuser said their name is L."
+    assert update.error == ""
 
 
 def test_append_memory_summary_ignores_empty_new_summary():
     assert append_memory_summary("existing summary.", "   ") == "existing summary."
+
+
+def test_update_memory_summary_ignores_llm_error():
+    class FailingSummaryModel:
+        def invoke(self, prompt: str):
+            raise RuntimeError("quota exceeded")
+
+    session = RuntimeSession(session_id="session-1", memory_summary="existing summary.")
+    session.runs["run-1"] = SimpleNamespace(run_id="run-1", question="my name is L", answer="hello L")
+
+    update = update_memory_summary(session, FailingSummaryModel())
+
+    assert update.summary == "existing summary."
+    assert update.error == "quota exceeded"
