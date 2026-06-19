@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -23,3 +24,20 @@ class RunEvent:
     event_type: str
     payload: dict[str, object] = field(default_factory=dict)
 
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "event_type": self.event_type,
+            "payload": self.payload,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> RunEvent:
+        event_payload = payload.get("payload", {})
+        if not isinstance(event_payload, dict):
+            event_payload = {}
+        return cls(
+            event_id=str(payload.get("event_id", "")),
+            event_type=str(payload.get("event_type", "")),
+            payload=event_payload,
+        )

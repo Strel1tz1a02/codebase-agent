@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -40,12 +41,13 @@ class RuntimeService:
         config: AppConfig | None = None,
         chat_model: object | None = None,
         tool_executor: callable | None = None,
+        store_path: str | Path | None = None,
     ) -> None:
         self.graph = graph or build_graph()
         self.config = config or AppConfig()
         self.chat_model = chat_model or build_chat_model(self.config)
         self.tool_executor = tool_executor or execute_tool
-        self.store = RuntimeStore()
+        self.store = RuntimeStore.load(store_path) if store_path is not None else RuntimeStore()
 
     def create_project(self, project_name: str, repo_path: str) -> Project:
         """创建项目并写入 RuntimeStore。"""
@@ -71,6 +73,7 @@ class RuntimeService:
         """为指定 project 创建新的运行会话。"""
         session = RuntimeSession(session_id=uuid4().hex)
         self.store.get_project(project_id).add_session(session)
+        self.store.save()
         return session
 
     def get_session(self, project_id: str, session_id: str) -> RuntimeSession:
@@ -86,6 +89,7 @@ class RuntimeService:
         run = session.get_run(run_id)
         event = RunEvent(event_id=uuid4().hex, event_type=event_type, payload=payload)
         run.add_event(event)
+        self.store.save()
         return event
 
     def list_run_events(self, project_id: str, session_id: str, run_id: str) -> list[RunEvent]:
@@ -117,13 +121,16 @@ class RuntimeService:
         """
         project = self.store.get_project(project_id)
         project.index_status = "indexing"  # type: ignore[assignment]
+        self.store.save()
         try:
             index = build_project_index(project.project_id, project.repo_path, self.config)
             project.index = index
             project.index_status = "indexed"  # type: ignore[assignment]
+            self.store.save()
         except Exception:
             project.index_status = "failed"  # type: ignore[assignment]
             project.index = None
+            self.store.save()
             raise
         return project
 
@@ -158,6 +165,7 @@ class RuntimeService:
         session = project.get_session(session_id)
         run = self._run_graph(project, session, question)
         session.add_run(run)
+        self.store.save()
         return run
 
     def _run_graph(self, project: Project, session: RuntimeSession, question: str) -> Run:

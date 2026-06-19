@@ -13,6 +13,9 @@ from src.api.schemas import HealthResponse
 from src.runtime.service import RuntimeService
 
 
+DEFAULT_RUNTIME_STORE_PATH = Path(".codebase_agent") / "runtime_store.json"
+
+
 def create_app(runtime: RuntimeService | None = None) -> FastAPI:
     """
     输入：
@@ -26,7 +29,7 @@ def create_app(runtime: RuntimeService | None = None) -> FastAPI:
         生命周期都从同一个 runtime.store 出发。
     """
     app = FastAPI(title="codebase-agent API")
-    app.state.runtime = runtime or RuntimeService()
+    app.state.runtime = runtime or RuntimeService(store_path=DEFAULT_RUNTIME_STORE_PATH)
     register_project_routes(app)
     register_session_routes(app)
     register_run_routes(app)

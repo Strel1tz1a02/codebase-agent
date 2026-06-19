@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.core.errors import ProjectNotFoundError
@@ -8,38 +10,66 @@ from src.core.errors import ProjectNotFoundError
 if TYPE_CHECKING:
     from src.runtime.project import Project
 
+
 @dataclass
 class RuntimeStore:
-    """
-    输入：
-        projects：按 project_id 保存的项目字典。
-    输出：
-        RuntimeStore 数据对象。
-    作用：
-        作为 RuntimeService 的统一对象存储入口，只持有 project 根对象。
-    为什么需要这个类：
-        Runtime 的对象所有权从 project 开始向下展开；项目级索引由 Project 自己维护，
-        store 不再维护并列的 project -> index 字典。
-    """
 
     projects: dict[str, Project] = field(default_factory=dict)
+    storage_path: Path | None = None
+
+    def __post_init__(self) -> None:
+        if self.storage_path is not None:
+            self.storage_path = _normalize_storage_path(self.storage_path)
+
+    @classmethod
+    def load(cls, storage_path: str | Path) -> RuntimeStore:
+        from src.runtime.project import Project
+
+        path = _normalize_storage_path(storage_path)
+        if not path.exists():
+            return cls(storage_path=path)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        projects = {}
+        for item in data.get("projects", []):
+            if isinstance(item, dict):
+                project = Project.from_payload(item)
+                projects[project.project_id] = project
+        return cls(projects=projects, storage_path=path)
+
+    def save(self) -> None:
+        if self.storage_path is None:
+            return
+
+        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "projects": [project.to_payload() for project in self.list_projects()],
+        }
+        temp_path = self.storage_path.with_suffix(f"{self.storage_path.suffix}.tmp")
+        temp_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+        temp_path.replace(self.storage_path)# temp_path移动/重命名到storage_path；如果目标已存在，就替换掉它。
 
     def add_project(self, project: Project) -> None:
-        """把 project 写入 store。"""
         self.projects[project.project_id] = project
+        self.save()
 
     def list_projects(self) -> list[Project]:
-        """按插入顺序返回所有 project。"""
         return list(self.projects.values())
 
     def get_project(self, project_id: str) -> Project:
-        """按 project_id 读取 project，不存在时抛出领域异常。"""
         if project_id not in self.projects:
             raise ProjectNotFoundError(f"project not found: {project_id}")
         return self.projects[project_id]
 
     def delete_project(self, project_id: str) -> Project:
-        """删除并返回指定 project，不存在时抛出领域异常。"""
         project = self.get_project(project_id)
         del self.projects[project_id]
+        self.save()
         return project
+
+
+def _normalize_storage_path(storage_path: str | Path) -> Path:
+    return Path(storage_path).expanduser().resolve()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.core.errors import RunNotFoundError
 
@@ -35,3 +35,19 @@ class RuntimeSession:
         if run_id not in self.runs:
             raise RunNotFoundError(f"run not found: {run_id}")
         return self.runs[run_id]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "runs": [run.to_payload() for run in self.runs.values()],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> RuntimeSession:
+        from src.runtime.run import Run
+
+        session = cls(session_id=str(payload.get("session_id", "")))
+        for item in payload.get("runs", []):
+            if isinstance(item, dict):
+                session.add_run(Run.from_payload(item))
+        return session

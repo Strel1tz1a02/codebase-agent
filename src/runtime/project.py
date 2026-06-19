@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from src.core.errors import SessionNotFoundError
 from src.rag.schemas import RagIndex
@@ -40,3 +40,34 @@ class Project:
         if session_id not in self.sessions:
             raise SessionNotFoundError(f"session not found: {session_id}")
         return self.sessions[session_id]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "project_id": self.project_id,
+            "name": self.name,
+            "repo_path": self.repo_path,
+            "index_status": _persisted_index_status(self.index_status),
+            "sessions": [session.to_payload() for session in self.sessions.values()],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: dict[str, Any]) -> Project:
+        project = cls(
+            project_id=str(payload.get("project_id", "")),
+            name=str(payload.get("name", "")),
+            repo_path=str(payload.get("repo_path", "")),
+            index_status=_persisted_index_status(payload.get("index_status", "not_indexed")),  # type: ignore[arg-type]
+        )
+        for item in payload.get("sessions", []):
+            if isinstance(item, dict):
+                project.add_session(RuntimeSession.from_payload(item))
+        return project
+
+
+def _persisted_index_status(status: object) -> str:
+    normalized = str(status)
+    if normalized in {"indexed", "indexing"}:
+        return "not_indexed"
+    if normalized in {"not_indexed", "failed"}:
+        return normalized
+    return "not_indexed"
