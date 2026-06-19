@@ -5,6 +5,7 @@ from pathlib import Path
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
+from src.core.paths import iter_repo_files
 from src.rag.indexing import build_project_index
 from src.rag.retrieval import retrieve_from_index
 from src.core.ignore import should_ignore_dir, should_ignore_file
@@ -101,22 +102,11 @@ def _scan_repo_files(root: Path) -> list[Path]:
     设计原因：
         repo_summary 和 search_code 需要同一套稳定文件边界，成熟入口不再依赖旧 V1 模块。
     """
-    if not root.exists():
-        raise FileNotFoundError(f"path does not exist: {root}")
-    if not root.is_dir():
-        raise NotADirectoryError(f"path is not a directory: {root}")
-
-    kept_files: list[Path] = []
-    for current_root, dir_names, file_names in root.walk(top_down=True):
-        dir_names[:] = [dir_name for dir_name in dir_names if not should_ignore_dir(dir_name)]
-        for file_name in file_names:
-            file_path = current_root / file_name
-            if should_ignore_file(file_path):
-                continue
-            kept_files.append(file_path.resolve())
-
-    kept_files.sort(key=lambda path: path.as_posix().casefold())
-    return kept_files
+    return iter_repo_files(
+        str(root),
+        should_ignore_dir=should_ignore_dir,
+        should_ignore_file=should_ignore_file,
+    )
 
 
 def _count_file_types(files: list[Path]) -> dict[str, int]:
