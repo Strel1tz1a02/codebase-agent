@@ -81,9 +81,17 @@ class RuntimeService:
         """按 project_id 和 session_id 读取会话。"""
         return self.store.get_project(project_id).get_session(session_id)
 
+    def list_sessions(self, project_id: str) -> list[RuntimeSession]:
+        """返回指定 project 下的所有会话，供 API 和前端恢复侧栏导航。"""
+        return list(self.store.get_project(project_id).sessions.values())
+
     def get_run(self, project_id: str, session_id: str, run_id: str) -> Run:
         """按 project/session/run 归属路径读取 run，供 API 边界调用。"""
         return self.get_session(project_id, session_id).get_run(run_id)
+
+    def list_runs(self, project_id: str, session_id: str) -> list[Run]:
+        """返回指定 session 下的所有 run，供前端恢复会话历史。"""
+        return list(self.get_session(project_id, session_id).runs.values())
 
     def append_event(self, session: RuntimeSession, run_id: str, event_type: str, payload: dict[str, object]) -> RunEvent:
         """为指定 run 追加运行事件。"""

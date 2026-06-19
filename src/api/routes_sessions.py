@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from src.api.errors import not_found_to_http_exception
-from src.api.schemas import CreateSessionResponse
+from src.api.schemas import CreateSessionResponse, SessionListResponse
 from src.core.errors import ProjectNotFoundError, SessionNotFoundError
 from src.runtime.session import RuntimeSession
 
@@ -15,6 +15,19 @@ def runtime_session_to_response(session: RuntimeSession) -> CreateSessionRespons
 
 
 def register_session_routes(app: FastAPI) -> None:
+    @app.get(
+        "/projects/{project_id}/sessions",
+        response_model=SessionListResponse,
+    )
+    def list_sessions(project_id: str) -> SessionListResponse:
+        try:
+            sessions = app.state.runtime.list_sessions(project_id)
+        except (ProjectNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
+        return SessionListResponse(
+            sessions=[runtime_session_to_response(session) for session in sessions]
+        )
+
     @app.post(
         "/projects/{project_id}/sessions",
         response_model=CreateSessionResponse,

@@ -1,18 +1,27 @@
 const state = {
   projects: [],
+  sessionsByProject: {},
+  runsBySession: {},
   project: null,
   sessionId: "",
   runId: "",
 };
 
+const SIDEBAR_WIDTH_KEY = "codebase-agent.sidebarWidth";
+const SIDEBAR_WIDTH_MIN = 320;
+const SIDEBAR_WIDTH_MAX = 640;
+
 const el = {
   apiStatus: document.getElementById("apiStatus"),
   projectStatus: document.getElementById("projectStatus"),
+  sessionStatus: document.getElementById("sessionStatus"),
   indexStatus: document.getElementById("indexStatus"),
   projectForm: document.getElementById("projectForm"),
   projectName: document.getElementById("projectName"),
   repoPath: document.getElementById("repoPath"),
   projectList: document.getElementById("projectList"),
+  sessionList: document.getElementById("sessionList"),
+  newSessionButton: document.getElementById("newSessionButton"),
   indexButton: document.getElementById("indexButton"),
   askForm: document.getElementById("askForm"),
   question: document.getElementById("question"),
@@ -23,6 +32,7 @@ const el = {
   detailSession: document.getElementById("detailSession"),
   detailRun: document.getElementById("detailRun"),
   events: document.getElementById("events"),
+  sidebarResizer: document.getElementById("sidebarResizer"),
 };
 
 async function request(path, options = {}) {
@@ -48,10 +58,7 @@ async function request(path, options = {}) {
 function renderProjects() {
   el.projectList.innerHTML = "";
   if (state.projects.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "project-list-empty";
-    empty.textContent = "暂无项目";
-    el.projectList.appendChild(empty);
+    renderEmpty(el.projectList, "暂无项目");
     return;
   }
   for (const project of state.projects) {
@@ -64,7 +71,10 @@ function renderProjects() {
     const selectButton = document.createElement("button");
     selectButton.type = "button";
     selectButton.className = "project-select";
-    selectButton.innerHTML = `<strong>${escapeHtml(project.name)}</strong><span>${escapeHtml(project.index_status)} · ${escapeHtml(project.repo_path)}</span>`;
+    selectButton.innerHTML = `
+      <strong>${escapeHtml(project.name)}</strong>
+      <span>${escapeHtml(project.index_status)} · ${escapeHtml(project.repo_path)}</span>
+    `;
     selectButton.addEventListener("click", () => selectProject(project));
 
     const deleteButton = document.createElement("button");
@@ -81,9 +91,37 @@ function renderProjects() {
   }
 }
 
+function renderSessions(projectId = state.project?.project_id || "") {
+  el.sessionList.innerHTML = "";
+  if (!projectId) {
+    renderEmpty(el.sessionList, "先选择项目");
+    return;
+  }
+  const sessions = state.sessionsByProject[projectId] || [];
+  if (sessions.length === 0) {
+    renderEmpty(el.sessionList, "暂无会话");
+    return;
+  }
+  for (const session of sessions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-item";
+    if (state.sessionId === session.session_id) {
+      button.classList.add("active");
+    }
+    button.innerHTML = `
+      <strong>${escapeHtml(sessionTitle(projectId, session.session_id))}</strong>
+      <span>${escapeHtml(session.session_id.slice(0, 8))}</span>
+    `;
+    button.addEventListener("click", () => selectSession(projectId, session.session_id));
+    el.sessionList.appendChild(button);
+  }
+}
+
 function renderDetails() {
   const project = state.project;
   el.projectStatus.textContent = project ? project.name : "未选择项目";
+  el.sessionStatus.textContent = state.sessionId ? `会话 ${state.sessionId.slice(0, 8)}` : "选择或创建会话";
   el.indexStatus.textContent = project ? project.index_status : "not_indexed";
   el.detailProject.textContent = project ? project.name : "-";
   el.detailProjectId.textContent = project ? project.project_id : "-";
@@ -91,7 +129,9 @@ function renderDetails() {
   el.detailSession.textContent = state.sessionId || "-";
   el.detailRun.textContent = state.runId || "-";
   el.indexButton.disabled = !project;
-  el.askForm.querySelector("button").disabled = !project;
+  el.newSessionButton.disabled = !project;
+  el.askForm.querySelector("button").disabled = !project || !state.sessionId;
+  el.question.disabled = !project || !state.sessionId;
 }
 
 async function selectProject(project) {
@@ -99,14 +139,11 @@ async function selectProject(project) {
   state.sessionId = "";
   state.runId = "";
   el.events.innerHTML = "";
+  renderProjects();
+  renderSessions(project.project_id);
   resetConversation();
   renderDetails();
-  const session = await request(`/projects/${project.project_id}/sessions`, {
-    method: "POST",
-    body: "{}",
-  });
-  state.sessionId = session.session_id;
-  renderDetails();
+  await loadSessions(project.project_id);
 }
 
 async function loadProjects() {
@@ -116,10 +153,53 @@ async function loadProjects() {
     renderProjects();
   } catch (error) {
     el.projectList.innerHTML = "";
-    const item = document.createElement("div");
-    item.className = "project-list-empty error";
-    item.textContent = error.message;
-    el.projectList.appendChild(item);
+    renderEmpty(el.projectList, error.message, true);
+  }
+}
+
+async function loadSessions(projectId) {
+  try {
+    const payload = await request(`/projects/${projectId}/sessions`);
+    state.sessionsByProject[projectId] = payload.sessions || [];
+    renderSessions(projectId);
+  } catch (error) {
+    el.sessionList.innerHTML = "";
+    renderEmpty(el.sessionList, error.message, true);
+  }
+}
+
+async function createSessionForCurrentProject() {
+  if (!state.project) return;
+  try {
+    const session = await request(`/projects/${state.project.project_id}/sessions`, {
+      method: "POST",
+      body: "{}",
+    });
+    const sessions = state.sessionsByProject[state.project.project_id] || [];
+    state.sessionsByProject[state.project.project_id] = [session, ...sessions];
+    await selectSession(state.project.project_id, session.session_id);
+  } catch (error) {
+    appendMessage("system", error.message, "error");
+  }
+}
+
+async function selectSession(projectId, sessionId) {
+  state.sessionId = sessionId;
+  state.runId = "";
+  el.events.innerHTML = "";
+  renderSessions(projectId);
+  renderDetails();
+  await loadRuns(projectId, sessionId);
+}
+
+async function loadRuns(projectId, sessionId) {
+  try {
+    const payload = await request(`/projects/${projectId}/sessions/${sessionId}/runs`);
+    state.runsBySession[sessionId] = payload.runs || [];
+    renderConversationFromRuns(state.runsBySession[sessionId]);
+  } catch (error) {
+    resetConversation();
+    appendMessage("system", error.message, "error");
   }
 }
 
@@ -127,12 +207,14 @@ async function deleteProject(project) {
   try {
     await request(`/projects/${project.project_id}`, { method: "DELETE" });
     state.projects = state.projects.filter((item) => item.project_id !== project.project_id);
+    delete state.sessionsByProject[project.project_id];
     if (state.project && state.project.project_id === project.project_id) {
       state.project = null;
       state.sessionId = "";
       state.runId = "";
       el.events.innerHTML = "";
       resetConversation();
+      renderSessions("");
       renderDetails();
     }
     renderProjects();
@@ -144,10 +226,24 @@ async function deleteProject(project) {
 function resetConversation() {
   el.conversation.innerHTML = `
     <div class="empty-state">
-      <h2>${state.project ? escapeHtml(state.project.name) : "选择或创建一个项目"}</h2>
-      <p>先为仓库建立索引，然后询问代码库问题。</p>
+      <h2>${state.project ? escapeHtml(state.project.name) : "选择一个项目"}</h2>
+      <p>${state.sessionId ? "开始询问这个代码库。" : "选择已有会话，或创建一个新会话。"}</p>
     </div>
   `;
+}
+
+function renderConversationFromRuns(runs) {
+  el.conversation.innerHTML = "";
+  if (!runs.length) {
+    resetConversation();
+    return;
+  }
+  for (const run of runs) {
+    appendMessage("user", run.question);
+    appendMessage("assistant", run.answer || run.reason || run.status);
+  }
+  state.runId = runs[runs.length - 1].run_id;
+  renderDetails();
 }
 
 function appendMessage(role, content, cssClass = "") {
@@ -179,6 +275,65 @@ async function checkHealth() {
   }
 }
 
+function sessionTitle(projectId, sessionId) {
+  const runs = state.runsBySession[sessionId] || [];
+  const firstQuestion = runs.find((run) => run.question)?.question;
+  if (firstQuestion) return firstQuestion;
+  const sessions = state.sessionsByProject[projectId] || [];
+  const index = sessions.findIndex((session) => session.session_id === sessionId);
+  return `会话 ${index >= 0 ? index + 1 : sessionId.slice(0, 8)}`;
+}
+
+function renderEmpty(container, text, isError = false) {
+  const empty = document.createElement("div");
+  empty.className = `list-empty ${isError ? "error" : ""}`.trim();
+  empty.textContent = text;
+  container.appendChild(empty);
+}
+
+function initSidebarResize() {
+  if (!el.sidebarResizer) return;
+  const savedWidth = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+  if (Number.isFinite(savedWidth)) {
+    setSidebarWidth(savedWidth);
+  }
+
+  let dragging = false;
+  el.sidebarResizer.addEventListener("pointerdown", (event) => {
+    dragging = true;
+    el.sidebarResizer.classList.add("dragging");
+    el.sidebarResizer.setPointerCapture(event.pointerId);
+  });
+
+  el.sidebarResizer.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    setSidebarWidth(event.clientX);
+  });
+
+  el.sidebarResizer.addEventListener("pointerup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    el.sidebarResizer.classList.remove("dragging");
+    el.sidebarResizer.releasePointerCapture(event.pointerId);
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(readSidebarWidth()));
+  });
+
+  el.sidebarResizer.addEventListener("pointercancel", () => {
+    dragging = false;
+    el.sidebarResizer.classList.remove("dragging");
+  });
+}
+
+function setSidebarWidth(width) {
+  const clamped = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, Number(width)));
+  document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+}
+
+function readSidebarWidth() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width");
+  return Number.parseInt(value, 10) || SIDEBAR_WIDTH_MIN;
+}
+
 el.projectForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const project = await request("/projects", {
@@ -191,7 +346,10 @@ el.projectForm.addEventListener("submit", async (event) => {
   state.projects.unshift(project);
   renderProjects();
   await selectProject(project);
+  await createSessionForCurrentProject();
 });
+
+el.newSessionButton.addEventListener("click", createSessionForCurrentProject);
 
 el.indexButton.addEventListener("click", async () => {
   if (!state.project) return;
@@ -224,7 +382,9 @@ el.askForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ question }),
     });
     state.runId = run.run_id;
+    state.runsBySession[state.sessionId] = [...(state.runsBySession[state.sessionId] || []), run];
     appendMessage("assistant", run.answer || run.reason || run.status);
+    renderSessions(state.project.project_id);
     renderDetails();
     const eventList = await request(`/projects/${state.project.project_id}/sessions/${state.sessionId}/runs/${run.run_id}/events`);
     renderEvents(eventList.events || []);
@@ -251,6 +411,8 @@ function displayRole(role) {
 }
 
 renderDetails();
+renderSessions("");
 resetConversation();
+initSidebarResize();
 checkHealth();
 loadProjects();

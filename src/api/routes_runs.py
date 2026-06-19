@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 
 from src.api.errors import not_found_to_http_exception
-from src.api.schemas import CreateRunRequest, RunEventListResponse, RunEventResponse, RunResponse
+from src.api.schemas import CreateRunRequest, RunEventListResponse, RunEventResponse, RunListResponse, RunResponse
 from src.core.errors import ProjectNotFoundError, RunNotFoundError, SessionNotFoundError
 from src.runtime.events import RunEvent
 from src.runtime.run import Run
@@ -28,6 +28,17 @@ def event_to_response(event: RunEvent) -> RunEventResponse:
 
 
 def register_run_routes(app: FastAPI) -> None:
+    @app.get(
+        "/projects/{project_id}/sessions/{session_id}/runs",
+        response_model=RunListResponse,
+    )
+    def list_runs(project_id: str, session_id: str) -> RunListResponse:
+        try:
+            runs = app.state.runtime.list_runs(project_id, session_id)
+        except (ProjectNotFoundError, SessionNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
+        return RunListResponse(runs=[run_to_response(run) for run in runs])
+
     @app.post(
         "/projects/{project_id}/sessions/{session_id}/runs",
         response_model=RunResponse,

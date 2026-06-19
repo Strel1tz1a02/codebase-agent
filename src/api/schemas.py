@@ -28,6 +28,10 @@ class CreateSessionResponse(BaseModel):
     status: str = "running"
 
 
+class SessionListResponse(BaseModel):
+    sessions: list[CreateSessionResponse]
+
+
 class CreateRunRequest(BaseModel):
     question: str
 
@@ -38,6 +42,10 @@ class RunResponse(BaseModel):
     status: str
     answer: str = ""
     reason: str = ""
+
+
+class RunListResponse(BaseModel):
+    runs: list[RunResponse]
 
 
 class RunEventResponse(BaseModel):

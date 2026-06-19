@@ -13,7 +13,6 @@ def test_runtime_store_persists_projects_sessions_runs_and_events(tmp_path):
     session = RuntimeSession(session_id="session-1")
     run = Run(
         run_id="run-1",
-        session_id=session.session_id,
         question="Where is main?",
         status="completed",
         answer="main is in src/main.py",
@@ -70,7 +69,6 @@ def test_runtime_objects_convert_to_and_from_payload(tmp_path):
     session = RuntimeSession(session_id="session-1", memory_summary="用户信息：\n- 用户自称 L。")
     run = Run(
         run_id="run-1",
-        session_id=session.session_id,
         question="Where is main?",
         status="completed",
         answer="main is in src/main.py",
