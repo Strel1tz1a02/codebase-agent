@@ -43,7 +43,7 @@ class RuntimeStore:
 
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "projects": [project.to_payload() for project in self.list_projects()],
+            "projects": [_project_storage_payload(project) for project in self.list_projects()],
         }
         temp_path = self.storage_path.with_suffix(f"{self.storage_path.suffix}.tmp")
         temp_path.write_text(
@@ -73,3 +73,14 @@ class RuntimeStore:
 
 def _normalize_storage_path(storage_path: str | Path) -> Path:
     return Path(storage_path).expanduser().resolve()
+
+
+def _project_storage_payload(project: Project) -> dict:
+    """生成用于落盘的 project payload，并过滤没有 run 的空会话。"""
+    payload = project.to_payload()
+    payload["sessions"] = [
+        session
+        for session in payload.get("sessions", [])
+        if isinstance(session, dict) and session.get("runs")
+    ]
+    return payload

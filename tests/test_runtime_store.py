@@ -64,6 +64,32 @@ def test_runtime_store_does_not_restore_unpersisted_rag_index(tmp_path):
     assert loaded_project.index is None
 
 
+def test_runtime_store_does_not_persist_empty_sessions(tmp_path):
+    """验证没有 run 的空会话不会被写入 RuntimeStore 持久化文件。"""
+    storage_path = tmp_path / "runtime_store.json"
+    store = RuntimeStore(storage_path=storage_path)
+    project = Project(project_id="project-1", name="demo", repo_path=str(tmp_path))
+    empty_session = RuntimeSession(session_id="empty-session")
+    used_session = RuntimeSession(session_id="used-session")
+    used_session.add_run(
+        Run(
+            run_id="run-1",
+            question="Where is main?",
+            status="completed",
+            answer="main is in src/main.py",
+        )
+    )
+    project.add_session(empty_session)
+    project.add_session(used_session)
+
+    store.add_project(project)
+
+    loaded = RuntimeStore.load(storage_path)
+    loaded_project = loaded.get_project(project.project_id)
+
+    assert list(loaded_project.sessions) == ["used-session"]
+
+
 def test_runtime_objects_convert_to_and_from_payload(tmp_path):
     project = Project(project_id="project-1", name="demo", repo_path=str(tmp_path))
     session = RuntimeSession(session_id="session-1", memory_summary="用户信息：\n- 用户自称 L。")
