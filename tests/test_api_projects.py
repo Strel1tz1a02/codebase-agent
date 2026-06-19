@@ -1,6 +1,7 @@
 ﻿from fastapi.testclient import TestClient
 
 from src.api.app import create_app
+from src.runtime.project import Project
 from src.runtime.service import RuntimeService
 
 
@@ -31,6 +32,22 @@ def test_get_project_endpoint_returns_registered_project(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["project_id"] == project.project_id
+
+
+def test_get_project_endpoint_uses_runtime_service_boundary(tmp_path):
+    """验证 API 通过 RuntimeService 公共方法读取项目，而不是穿透访问 store。"""
+
+    class BoundaryRuntime:
+        def get_project(self, project_id):
+            return Project(project_id=project_id, name="demo", repo_path=str(tmp_path))
+
+    app = create_app(runtime=BoundaryRuntime())
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/projects/project-1")
+
+    assert response.status_code == 200
+    assert response.json()["project_id"] == "project-1"
 
 
 def test_list_projects_endpoint_returns_registered_projects(tmp_path):

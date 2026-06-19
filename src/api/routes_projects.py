@@ -31,7 +31,7 @@ def register_project_routes(app: FastAPI) -> None:
     @app.get("/projects/{project_id}", response_model=ProjectResponse)
     def get_project(project_id: str) -> ProjectResponse:
         try:
-            project = app.state.runtime.store.get_project(project_id)
+            project = app.state.runtime.get_project(project_id)
         except ProjectNotFoundError as exc:
             raise not_found_to_http_exception(exc) from exc
         return project_to_response(project)

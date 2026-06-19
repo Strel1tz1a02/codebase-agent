@@ -1,7 +1,7 @@
 ﻿import pytest
 
 from src.core.config import AppConfig, ModelConfig
-from src.core.errors import RagIndexNotReadyError
+from src.core.errors import RagIndexNotReadyError, RunNotFoundError, SessionNotFoundError
 import src.runtime.service as runtime_service
 from src.runtime.service import RuntimeService
 
@@ -50,7 +50,31 @@ def test_runtime_records_run_events(tmp_path):
     assert event.event_type == "custom_event"
     assert event.payload == {"ok": True}
     assert run.events[-1] is event
-    assert runtime.list_run_events(session, run.run_id)[-1] is event
+    assert runtime.list_run_events(project.project_id, session.session_id, run.run_id)[-1] is event
+
+
+def test_runtime_reads_run_and_events_by_owner_ids(tmp_path):
+    """验证 RuntimeService 对外按 project/session/run ID 读取 run 和事件。"""
+
+    class FakeGraph:
+        def invoke(self, state):
+            return {"status": "completed", "answer": "", "events": []}
+
+    _write_repo_file(tmp_path)
+    runtime = RuntimeService(graph=FakeGraph())
+    project = runtime.create_project("demo", str(tmp_path))
+    runtime.index_project(project.project_id)
+    session = runtime.create_session(project.project_id)
+    run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
+
+    loaded = runtime.get_run(project.project_id, session.session_id, run.run_id)
+    events = runtime.list_run_events(project.project_id, session.session_id, run.run_id)
+
+    assert loaded is run
+    assert [event.event_type for event in events] == [
+        "graph_start",
+        "graph_finish",
+    ]
 
 
 def test_runtime_validates_session_and_run_exist(tmp_path):
@@ -68,9 +92,9 @@ def test_runtime_validates_session_and_run_exist(tmp_path):
     runtime.validate_session_exists(project.project_id, session.session_id)
     runtime.validate_run_exists(session, run.run_id)
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SessionNotFoundError):
         runtime.validate_session_exists(project.project_id, "missing-session")
-    with pytest.raises(KeyError):
+    with pytest.raises(RunNotFoundError):
         runtime.validate_run_exists(session, "missing-run")
 
 
@@ -103,7 +127,7 @@ def test_runtime_ask_runs_graph_and_records_start_and_finish_events(tmp_path):
     ]
     assert graph_calls[0]["rag_index"] is runtime.get_project_index(project.project_id)
     assert "retriever" not in graph_calls[0]
-    assert [event.event_type for event in runtime.list_run_events(session, completed.run_id)] == [
+    assert [event.event_type for event in runtime.list_run_events(project.project_id, session.session_id, completed.run_id)] == [
         "graph_start",
         "graph_event",
         "graph_finish",
@@ -224,12 +248,13 @@ def test_runtime_get_methods_require_owner_scope(tmp_path):
     run = runtime.ask(project.project_id, session.session_id, "Where is the entry point?")
 
     assert runtime.get_session(project.project_id, session.session_id) is session
-    assert runtime.get_run(session, run.run_id) is run
+    assert runtime.get_run(project.project_id, session.session_id, run.run_id) is run
 
-    with pytest.raises(KeyError):
+    with pytest.raises(SessionNotFoundError):
         runtime.get_session(other_project.project_id, session.session_id)
-    with pytest.raises(KeyError):
-        runtime.get_run(runtime.create_session(other_project.project_id), run.run_id)
+    with pytest.raises(RunNotFoundError):
+        other_session = runtime.create_session(other_project.project_id)
+        runtime.get_run(other_project.project_id, other_session.session_id, run.run_id)
 
 
 def test_runtime_uses_ask_as_public_run_entrypoint():

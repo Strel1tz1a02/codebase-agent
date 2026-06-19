@@ -52,8 +52,7 @@ def register_run_routes(app: FastAPI) -> None:
     )
     def get_run(project_id: str, session_id: str, run_id: str) -> RunResponse:
         try:
-            session = app.state.runtime.store.get_project(project_id).get_session(session_id)
-            run = session.get_run(run_id)
+            run = app.state.runtime.get_run(project_id, session_id, run_id)
         except (ProjectNotFoundError, SessionNotFoundError, RunNotFoundError, KeyError) as exc:
             raise not_found_to_http_exception(exc) from exc
         return run_to_response(run)
@@ -68,9 +67,7 @@ def register_run_routes(app: FastAPI) -> None:
         run_id: str,
     ) -> RunEventListResponse:
         try:
-            session = app.state.runtime.store.get_project(project_id).get_session(session_id)
-            run = session.get_run(run_id)
-            events = run.list_events()
+            events = app.state.runtime.list_run_events(project_id, session_id, run_id)
         except (ProjectNotFoundError, SessionNotFoundError, RunNotFoundError, KeyError) as exc:
             raise not_found_to_http_exception(exc) from exc
         return RunEventListResponse(events=[event_to_response(event) for event in events])

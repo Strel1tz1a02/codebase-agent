@@ -77,9 +77,9 @@ class RuntimeService:
         """按 project_id 和 session_id 读取会话。"""
         return self.store.get_project(project_id).get_session(session_id)
 
-    def get_run(self, session: RuntimeSession, run_id: str) -> Run:
-        """从指定 session 中读取 run。"""
-        return session.get_run(run_id)
+    def get_run(self, project_id: str, session_id: str, run_id: str) -> Run:
+        """按 project/session/run 归属路径读取 run，供 API 边界调用。"""
+        return self.get_session(project_id, session_id).get_run(run_id)
 
     def append_event(self, session: RuntimeSession, run_id: str, event_type: str, payload: dict[str, object]) -> RunEvent:
         """为指定 run 追加运行事件。"""
@@ -88,9 +88,9 @@ class RuntimeService:
         run.add_event(event)
         return event
 
-    def list_run_events(self, session: RuntimeSession, run_id: str) -> list[RunEvent]:
-        """返回指定 run 的事件列表。"""
-        return session.get_run(run_id).list_events()
+    def list_run_events(self, project_id: str, session_id: str, run_id: str) -> list[RunEvent]:
+        """按 project/session/run 归属路径返回 run 的事件列表。"""
+        return self.get_run(project_id, session_id, run_id).list_events()
 
     def validate_project_exists(self, project_id: str) -> None:
         """校验 project 是否存在，不存在时抛出领域异常。"""
