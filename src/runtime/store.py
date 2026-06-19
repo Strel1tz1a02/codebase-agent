@@ -81,6 +81,12 @@ def _project_storage_payload(project: Project) -> dict:
     payload["sessions"] = [
         session
         for session in payload.get("sessions", [])
-        if isinstance(session, dict) and session.get("runs")
+        if isinstance(session, dict) and _has_non_empty_runs(session)
     ]
     return payload
+
+
+def _has_non_empty_runs(session_payload: dict) -> bool:
+    """校验 session payload 里存在非空 runs 列表，避免空会话被持久化。"""
+    runs = session_payload.get("runs")
+    return isinstance(runs, list) and len(runs) > 0

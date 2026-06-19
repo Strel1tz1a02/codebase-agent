@@ -4,6 +4,7 @@ const state = {
   runsBySession: {},
   project: null,
   sessionId: "",
+  sessionDraft: false,
   runId: "",
 };
 
@@ -136,6 +137,9 @@ function renderDetails() {
   const project = state.project;
   el.projectStatus.textContent = project ? project.name : "未选择项目";
   el.sessionStatus.textContent = state.sessionId ? `会话 ${state.sessionId.slice(0, 8)}` : "选择或创建会话";
+  if (state.sessionDraft) {
+    el.sessionStatus.textContent = "新会话草稿";
+  }
   el.indexStatus.textContent = project ? project.index_status : "not_indexed";
   el.detailProject.textContent = project ? project.name : "-";
   el.detailProjectId.textContent = project ? project.project_id : "-";
@@ -144,13 +148,14 @@ function renderDetails() {
   el.detailRun.textContent = state.runId || "-";
   el.indexButton.disabled = !project;
   el.newSessionButton.disabled = !project;
-  el.askForm.querySelector("button").disabled = !project || !state.sessionId;
-  el.question.disabled = !project || !state.sessionId;
+  el.askForm.querySelector("button").disabled = !project || (!state.sessionId && !state.sessionDraft);
+  el.question.disabled = !project || (!state.sessionId && !state.sessionDraft);
 }
 
 async function selectProject(project) {
   state.project = project;
   state.sessionId = "";
+  state.sessionDraft = false;
   state.runId = "";
   el.events.innerHTML = "";
   renderProjects();
@@ -182,8 +187,21 @@ async function loadSessions(projectId) {
   }
 }
 
-async function createSessionForCurrentProject() {
+function startDraftSession() {
   if (!state.project) return;
+  state.sessionId = "";
+  state.sessionDraft = true;
+  state.runId = "";
+  el.events.innerHTML = "";
+  renderSessions(state.project.project_id);
+  resetConversation();
+  renderDetails();
+}
+
+async function ensureSessionForQuestion() {
+  if (!state.project) return "";
+  if (state.sessionId) return state.sessionId;
+  if (!state.sessionDraft) return "";
   try {
     const session = await request(`/projects/${state.project.project_id}/sessions`, {
       method: "POST",
@@ -191,14 +209,21 @@ async function createSessionForCurrentProject() {
     });
     const sessions = state.sessionsByProject[state.project.project_id] || [];
     state.sessionsByProject[state.project.project_id] = [session, ...sessions];
-    await selectSession(state.project.project_id, session.session_id);
+    state.sessionId = session.session_id;
+    state.sessionDraft = false;
+    state.runsBySession[session.session_id] = [];
+    renderSessions(state.project.project_id);
+    renderDetails();
+    return session.session_id;
   } catch (error) {
     appendMessage("system", error.message, "error");
+    return "";
   }
 }
 
 async function selectSession(projectId, sessionId) {
   state.sessionId = sessionId;
+  state.sessionDraft = false;
   state.runId = "";
   el.events.innerHTML = "";
   renderSessions(projectId);
@@ -215,6 +240,7 @@ async function deleteSession(projectId, session) {
     delete state.runsBySession[session.session_id];
     if (state.sessionId === session.session_id) {
       state.sessionId = "";
+      state.sessionDraft = false;
       state.runId = "";
       el.events.innerHTML = "";
       resetConversation();
@@ -245,6 +271,7 @@ async function deleteProject(project) {
     if (state.project && state.project.project_id === project.project_id) {
       state.project = null;
       state.sessionId = "";
+      state.sessionDraft = false;
       state.runId = "";
       el.events.innerHTML = "";
       resetConversation();
@@ -261,7 +288,7 @@ function resetConversation() {
   el.conversation.innerHTML = `
     <div class="empty-state">
       <h2>${state.project ? escapeHtml(state.project.name) : "选择一个项目"}</h2>
-      <p>${state.sessionId ? "开始询问这个代码库。" : "选择已有会话，或创建一个新会话。"}</p>
+      <p>${state.sessionId || state.sessionDraft ? "开始询问这个代码库。" : "选择已有会话，或创建一个新会话。"}</p>
     </div>
   `;
 }
@@ -380,10 +407,10 @@ el.projectForm.addEventListener("submit", async (event) => {
   state.projects.unshift(project);
   renderProjects();
   await selectProject(project);
-  await createSessionForCurrentProject();
+  startDraftSession();
 });
 
-el.newSessionButton.addEventListener("click", createSessionForCurrentProject);
+el.newSessionButton.addEventListener("click", startDraftSession);
 
 el.indexButton.addEventListener("click", async () => {
   if (!state.project) return;
@@ -405,22 +432,24 @@ el.indexButton.addEventListener("click", async () => {
 
 el.askForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!state.project || !state.sessionId) return;
+  if (!state.project || (!state.sessionId && !state.sessionDraft)) return;
   const question = el.question.value.trim();
   if (!question) return;
   appendMessage("user", question);
   el.question.value = "";
   try {
-    const run = await request(`/projects/${state.project.project_id}/sessions/${state.sessionId}/runs`, {
+    const sessionId = await ensureSessionForQuestion();
+    if (!sessionId) return;
+    const run = await request(`/projects/${state.project.project_id}/sessions/${sessionId}/runs`, {
       method: "POST",
       body: JSON.stringify({ question }),
     });
     state.runId = run.run_id;
-    state.runsBySession[state.sessionId] = [...(state.runsBySession[state.sessionId] || []), run];
+    state.runsBySession[sessionId] = [...(state.runsBySession[sessionId] || []), run];
     appendMessage("assistant", run.answer || run.reason || run.status);
     renderSessions(state.project.project_id);
     renderDetails();
-    const eventList = await request(`/projects/${state.project.project_id}/sessions/${state.sessionId}/runs/${run.run_id}/events`);
+    const eventList = await request(`/projects/${state.project.project_id}/sessions/${sessionId}/runs/${run.run_id}/events`);
     renderEvents(eventList.events || []);
   } catch (error) {
     appendMessage("system", error.message, "error");

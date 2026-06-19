@@ -42,3 +42,12 @@ def test_ui_can_delete_individual_sessions():
     assert "deleteSession(projectId, session)" in script
     assert "`/projects/${projectId}/sessions/${session.session_id}`" in script
     assert 'method: "DELETE"' in script
+
+
+def test_ui_creates_session_only_when_first_message_is_sent():
+    """验证新会话先是前端草稿，发送第一条消息时才创建后端 session。"""
+    script = Path("src/ui/static/app.js").read_text(encoding="utf-8")
+
+    assert "startDraftSession()" in script
+    assert "ensureSessionForQuestion()" in script
+    assert 'state.sessionDraft = true' in script
