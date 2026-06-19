@@ -33,3 +33,12 @@ def test_ui_sidebar_width_is_user_resizable():
     assert "initSidebarResize()" in script
     assert "codebase-agent.sidebarWidth" in script
     assert "--sidebar-width" in styles
+
+
+def test_ui_can_delete_individual_sessions():
+    """验证前端会调用删除单个会话的 API，而不是只能删除整个项目。"""
+    script = Path("src/ui/static/app.js").read_text(encoding="utf-8")
+
+    assert "deleteSession(projectId, session)" in script
+    assert "`/projects/${projectId}/sessions/${session.session_id}`" in script
+    assert 'method: "DELETE"' in script

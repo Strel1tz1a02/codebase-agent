@@ -103,6 +103,9 @@ function renderSessions(projectId = state.project?.project_id || "") {
     return;
   }
   for (const session of sessions) {
+    const item = document.createElement("div");
+    item.className = "session-row";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "session-item";
@@ -114,7 +117,18 @@ function renderSessions(projectId = state.project?.project_id || "") {
       <span>${escapeHtml(session.session_id.slice(0, 8))}</span>
     `;
     button.addEventListener("click", () => selectSession(projectId, session.session_id));
-    el.sessionList.appendChild(button);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "session-delete";
+    deleteButton.title = "删除会话";
+    deleteButton.setAttribute("aria-label", `删除会话 ${session.session_id}`);
+    deleteButton.textContent = "×";
+    deleteButton.addEventListener("click", () => deleteSession(projectId, session));
+
+    item.appendChild(button);
+    item.appendChild(deleteButton);
+    el.sessionList.appendChild(item);
   }
 }
 
@@ -190,6 +204,26 @@ async function selectSession(projectId, sessionId) {
   renderSessions(projectId);
   renderDetails();
   await loadRuns(projectId, sessionId);
+}
+
+async function deleteSession(projectId, session) {
+  try {
+    await request(`/projects/${projectId}/sessions/${session.session_id}`, { method: "DELETE" });
+    state.sessionsByProject[projectId] = (state.sessionsByProject[projectId] || []).filter(
+      (item) => item.session_id !== session.session_id,
+    );
+    delete state.runsBySession[session.session_id];
+    if (state.sessionId === session.session_id) {
+      state.sessionId = "";
+      state.runId = "";
+      el.events.innerHTML = "";
+      resetConversation();
+      renderDetails();
+    }
+    renderSessions(projectId);
+  } catch (error) {
+    appendMessage("system", error.message, "error");
+  }
 }
 
 async function loadRuns(projectId, sessionId) {

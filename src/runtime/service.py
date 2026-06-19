@@ -85,6 +85,14 @@ class RuntimeService:
         """返回指定 project 下的所有会话，供 API 和前端恢复侧栏导航。"""
         return list(self.store.get_project(project_id).sessions.values())
 
+    def delete_session(self, project_id: str, session_id: str) -> RuntimeSession:
+        """删除指定 project 下的会话，并同步保存 RuntimeStore。"""
+        project = self.store.get_project(project_id)
+        session = project.get_session(session_id)
+        del project.sessions[session_id]# 从字典中删除指定的键值对
+        self.store.save()
+        return session
+
     def get_run(self, project_id: str, session_id: str, run_id: str) -> Run:
         """按 project/session/run 归属路径读取 run，供 API 边界调用。"""
         return self.get_session(project_id, session_id).get_run(run_id)

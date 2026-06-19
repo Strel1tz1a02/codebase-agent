@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 
 from src.api.errors import not_found_to_http_exception
 from src.api.schemas import CreateSessionResponse, SessionListResponse
@@ -50,3 +50,14 @@ def register_session_routes(app: FastAPI) -> None:
         except (ProjectNotFoundError, SessionNotFoundError, KeyError) as exc:
             raise not_found_to_http_exception(exc) from exc
         return runtime_session_to_response(session)
+
+    @app.delete(
+        "/projects/{project_id}/sessions/{session_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    def delete_session(project_id: str, session_id: str) -> Response:
+        try:
+            app.state.runtime.delete_session(project_id, session_id)
+        except (ProjectNotFoundError, SessionNotFoundError, KeyError) as exc:
+            raise not_found_to_http_exception(exc) from exc
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
