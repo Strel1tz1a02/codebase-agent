@@ -4,6 +4,8 @@ from typing import Annotated, TypedDict
 
 from langgraph.graph.message import add_messages
 
+from src.tools.toolkit import DEFAULT_TOOLS
+
 
 class AgentGraphState(TypedDict, total=False):
     """
@@ -59,6 +61,9 @@ def create_initial_state(
     为什么需要这个函数?
         graph 入口需要稳定完整的 state；集中初始化可以避免 runtime 或测试手写字段时遗漏默认值。
     """
+    if callable(getattr(chat_model, "bind_tools", None)):
+        chat_model = chat_model.bind_tools(DEFAULT_TOOLS)
+
     state = AgentGraphState(
         project_id=project_id,
         repo_path=repo_path,

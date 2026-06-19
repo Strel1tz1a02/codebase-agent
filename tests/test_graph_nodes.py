@@ -24,6 +24,27 @@ class RecordingInvokeModel:
         return FakeChatResponse(self.response)
 
 
+class FakeToolCallResponse:
+    def __init__(self, tool_calls=None, content=""):
+        self.tool_calls = tool_calls or []
+        self.content = content
+
+
+class RecordingBindToolsModel:
+    def __init__(self, response):
+        self.response = response
+        self.bound_tools = []
+        self.prompts = []
+
+    def bind_tools(self, tools):
+        self.bound_tools.append(tools)
+        return self
+
+    def invoke(self, prompt):
+        self.prompts.append(prompt)
+        return self.response
+
+
 def assert_partial_update(result):
     assert "project_id" not in result
     assert "repo_path" not in result
@@ -61,6 +82,51 @@ def test_plan_next_step_selects_answer():
 
     assert result["next_step"] == "answer"
     assert_partial_update(result)
+
+
+def test_plan_next_step_uses_bound_tool_calls_when_supported():
+    model = RecordingBindToolsModel(
+        FakeToolCallResponse(
+            [
+                {
+                    "name": "read_file",
+                    "args": {"path": "src/graph/nodes.py"},
+                    "id": "call-1",
+                }
+            ]
+        )
+    )
+    state = _make_state("Read graph nodes", model)
+
+    result = plan_next_step(state)
+
+    assert result["next_step"] == "execute_tools"
+    assert result["invalid_plan_round"] == 0
+    assert result["tool_calls"] == [
+        {"name": "read_file", "arguments": {"path": "src/graph/nodes.py"}}
+    ]
+    assert {tool.name for tool in model.bound_tools[0]} == {
+        "repo_summary",
+        "read_file",
+        "search_code",
+        "retrieve_code",
+    }
+    assert "Read graph nodes" in model.prompts[0]
+    assert_partial_update(result)
+
+
+def test_bound_tool_model_is_reused_across_planning_rounds():
+    model = RecordingBindToolsModel(FakeToolCallResponse(content="answer"))
+    state = _make_state("Can we answer?", model)
+
+    first = plan_next_step(state)
+    second_state = {**state, **first}
+    second = plan_next_step(second_state)
+
+    assert first["next_step"] == "answer"
+    assert second["next_step"] == "answer"
+    assert len(model.bound_tools) == 1
+    assert len(model.prompts) == 2
 
 
 def test_plan_next_step_replans_unknown():
