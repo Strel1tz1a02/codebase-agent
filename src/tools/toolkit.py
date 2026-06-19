@@ -8,6 +8,7 @@ from langchain_core.tools import BaseTool
 
 from src.tools.codebase import repo_summary_tool, retrieve_code_tool, search_code_tool
 from src.tools.filesystem import read_file_tool
+from src.tools.history import read_history_run_tool
 
 
 @dataclass
@@ -36,6 +37,7 @@ DEFAULT_TOOLS: list[BaseTool] = [
     read_file_tool,
     search_code_tool,
     retrieve_code_tool,
+    read_history_run_tool,
 ]
 
 TOOL_REGISTRY: dict[str, BaseTool | Callable[[dict[str, object]], dict[str, object]]] = {

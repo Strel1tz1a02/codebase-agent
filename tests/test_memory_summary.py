@@ -33,15 +33,15 @@ def test_format_recent_history_limits_by_run_without_splitting_pairs():
     assert "assistant: second answer" in text
 
 
-def test_summarize_latest_run_uses_llm_on_latest_session_run():
+def test_summarize_latest_run_tags_summary_with_latest_run_id():
     session = RuntimeSession(session_id="session-1")
-    session.runs["run-1"] = SimpleNamespace(question="old question", answer="old answer")
-    session.runs["run-2"] = SimpleNamespace(question="my name is L", answer="hello L")
+    session.runs["run-1"] = SimpleNamespace(run_id="run-1", question="old question", answer="old answer")
+    session.runs["run-2"] = SimpleNamespace(run_id="run-2", question="my name is L", answer="hello L")
     model = RecordingSummaryModel("user said their name is L.")
 
     summary = summarize_latest_run(session, model)
 
-    assert summary == "user said their name is L."
+    assert summary == "[run_id=run-2]\nuser said their name is L."
     assert len(model.prompts) == 1
     assert "my name is L" in model.prompts[0]
     assert "hello L" in model.prompts[0]
@@ -50,12 +50,12 @@ def test_summarize_latest_run_uses_llm_on_latest_session_run():
 
 def test_update_memory_summary_appends_new_llm_summary():
     session = RuntimeSession(session_id="session-1", memory_summary="existing summary.")
-    session.runs["run-1"] = SimpleNamespace(question="my name is L", answer="hello L")
+    session.runs["run-1"] = SimpleNamespace(run_id="run-1", question="my name is L", answer="hello L")
     model = RecordingSummaryModel("user said their name is L.")
 
     summary = update_memory_summary(session, model)
 
-    assert summary == "existing summary.\n\nuser said their name is L."
+    assert summary == "existing summary.\n\n[run_id=run-1]\nuser said their name is L."
 
 
 def test_append_memory_summary_ignores_empty_new_summary():

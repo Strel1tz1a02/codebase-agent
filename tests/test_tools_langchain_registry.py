@@ -7,7 +7,13 @@ from src.tools.toolkit import DEFAULT_TOOLS, format_tool_descriptions
 def test_default_tools_contains_expected_names():
     names = {tool.name for tool in DEFAULT_TOOLS}
 
-    assert names == {"repo_summary", "read_file", "search_code", "retrieve_code"}
+    assert names == {
+        "repo_summary",
+        "read_file",
+        "search_code",
+        "retrieve_code",
+        "read_history_run",
+    }
 
 
 def test_format_tool_descriptions_follows_registered_tools(monkeypatch):

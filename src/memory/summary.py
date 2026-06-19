@@ -13,7 +13,10 @@ def summarize_latest_run(session: RuntimeSession, chat_model: object) -> str:
         answer=str(getattr(latest_run, "answer", "")),
     )
     response = chat_model.invoke(prompt)
-    return str(getattr(response, "content", response)).strip()
+    summary = str(getattr(response, "content", response)).strip()
+    if not summary:
+        return ""
+    return f"[run_id={getattr(latest_run, 'run_id', '')}]\n{summary}"
 
 
 def update_memory_summary(session: RuntimeSession, chat_model: object) -> str:
